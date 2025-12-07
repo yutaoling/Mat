@@ -218,20 +218,14 @@ def get_mo_ground_truth_func():
         560,
     ])
 
-    def _mo_func(x):
-        return (_func(x)/_mo_scale).mean()
-        '''
-        return (np.array([
-            _ym_func(x),
-            _ys_func(x),
-            _uts_func(x),
-            _el_func(x),
-            # _dar_func(x),
-            _hv_func(x),
-        ]) / _mo_scale).mean()
-        '''
-    
-    return _mo_func
+    def _mo_raw_func(x):
+        """
+            返回原始多目标向量（未加权）的预测值，形如 (n_props,)
+        """
+        return np.array(_func(x))
+
+    # 返回原始向量函数以及用于归一化的尺度向量
+    return _mo_raw_func, _mo_scale
 
 class State:
     def __init__(self, if_init: bool = False, 
@@ -363,7 +357,60 @@ class Environment:
         self.init_surrogate(self.init_N, random_seed)
     
     def init_world_model(self,):
-        self.func = get_mo_ground_truth_func()
+        # 获取返回的原始多目标函数及其尺度
+        raw_func, mo_scale = get_mo_ground_truth_func()
+        self.raw_mo_func = raw_func
+        self.mo_scale = np.array(mo_scale)
+        # 初始权重：相等权重
+        n_props = len(self.mo_scale)
+        self.mo_weights = np.ones(n_props, dtype=float) / float(n_props)
+        # self.func 返回标量（按当前权重将向量合并）
+        self.func = lambda x: float(np.dot(self.raw_mo_func(x) / self.mo_scale, self.mo_weights))
+
+    def set_mo_weights(self, weights):
+        """Set multi-objective weights. `weights` should be array-like of length n_props.
+        Weights will be normalized to sum to 1.
+        """
+        w = np.array(weights, dtype=float)
+        assert w.ndim == 1 and len(w) == len(self.mo_scale), 'weights length mismatch'
+        w = np.clip(w, 0.0, None)
+        if w.sum() <= 0:
+            w = np.ones_like(w)
+        self.mo_weights = w / w.sum()
+        # update scalar func
+        self.func = lambda x: float(np.dot(self.raw_mo_func(x) / self.mo_scale, self.mo_weights))
+
+    def update_mo_weights(self, method='improvement', window=20, eps=1e-8):
+        """Auto-update weights based on information in `surrogate_buffer_list`.
+
+        method options:
+        - 'improvement': weight objectives by their recent improvement magnitudes.
+        - 'variance': weight by predictive variance (not implemented here).
+
+        This implementation computes the difference between the best value in the
+        last `window` experiments and the best value in the previous `window`.
+        Larger improvements receive larger weights.
+        """
+        if len(self.surrogate_buffer_list) < 2:
+            return
+        n = len(self.surrogate_buffer_list)
+        w = np.ones(len(self.mo_scale), dtype=float)
+        if method == 'improvement':
+            # evaluate raw properties for the buffer
+            vals = np.array([self.raw_mo_func(x) for x in self.surrogate_buffer_list])  # shape (n_samples, n_props)
+            # divide into two windows
+            k = max(1, min(window, n // 2))
+            recent = vals[-k:]
+            prev = vals[-2*k:-k] if n >= 2*k else vals[:k]
+            recent_best = np.max(recent / self.mo_scale, axis=0)
+            prev_best = np.max(prev / self.mo_scale, axis=0)
+            imp = recent_best - prev_best
+            imp = np.maximum(imp, 0.0) + eps
+            w = imp
+            if w.sum() <= 0:
+                w = np.ones_like(w)
+        # normalize and set
+        self.set_mo_weights(w / (w.sum() + 0.0))
 
     def copy_initialization(self, env: Environment):
         ''' copy the randomly initialized exp point from a ref environment instance '''

@@ -210,6 +210,7 @@ def train_one_ep(agent: DQNAgent, env: Environment, EP: int):
         state_prime, reward, done = env.step(state, action)
         agent.memory.add(state, action, reward, state_prime, done)
 
+
         state = state_prime
             
         '''
@@ -220,6 +221,12 @@ def train_one_ep(agent: DQNAgent, env: Environment, EP: int):
 
     if agent.epsilon > agent.epsilon_min:
         agent.epsilon *= agent.epsilon_decay
+    # After finishing one episode, update multi-objective weights in the environment
+    try:
+        if hasattr(env, 'update_mo_weights'):
+            env.update_mo_weights(method='improvement', window=50)
+    except Exception as e:
+        print(f"Warning: update_mo_weights failed: {e}")
 
 def retry_on_error(max_retries = 3):
     def decorator(func):

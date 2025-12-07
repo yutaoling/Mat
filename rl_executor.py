@@ -14,7 +14,7 @@ from rl_dqn_agents import (
     device,
 )
 import torch
-N_JOBS=5
+N_JOBS=1
 torch.cuda.set_per_process_memory_fraction(0.95/N_JOBS)
 
 def rl_dqn_serial(init_N = 20,
@@ -55,9 +55,15 @@ def rl_dqn_serial(init_N = 20,
         train_one_ep(agent, env, ep)
         if ep % 10 == 0 or ep<=10:
             bsf = round(env.best_score, COMPOSITION_ROUNDUP_DIGITS)
-            _tmp_res = [ep, len(env.surrogate_buffer), bsf]
+            _tmp_res = [ep, bsf]
             traj.append(_tmp_res)
-            print(*_tmp_res)
+            # also print current multi-objective weights for debugging
+            try:
+                weights = env.mo_weights if hasattr(env, 'mo_weights') else None
+                w_str = np.round(weights, 4).tolist() if weights is not None else None
+            except Exception:
+                w_str = None
+            print(*_tmp_res, 'mo_weights=', w_str)
             # print(*env.get_best_x())
 
     bsf_list = [env.func(_comp) for _comp in env.surrogate_buffer_list]
