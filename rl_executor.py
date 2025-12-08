@@ -14,7 +14,7 @@ from rl_dqn_agents import (
     device,
 )
 import torch
-N_JOBS=1
+N_JOBS=5
 torch.cuda.set_per_process_memory_fraction(0.95/N_JOBS)
 
 def rl_dqn_serial(init_N = 20,
@@ -63,7 +63,7 @@ def rl_dqn_serial(init_N = 20,
                 w_str = np.round(weights, 4).tolist() if weights is not None else None
             except Exception:
                 w_str = None
-            print(*_tmp_res, 'mo_weights=', w_str)
+            print(*_tmp_res, 'mo_weights=', w_str, 'Best_Prop=', [round(x,1) for x in env.get_best_prop().tolist()] if env.get_best_prop() is not None else None)
             # print(*env.get_best_x())
 
     bsf_list = [env.func(_comp) for _comp in env.surrogate_buffer_list]
@@ -73,6 +73,8 @@ def rl_dqn_serial(init_N = 20,
     joblib.dump(bsf_list, f'rl_single_agent_direct_R-{id_str}.pkl')
 
     print(*env.get_best_x())
+    _props = env.get_best_prop()
+    print(*[round(x, 1) for x in _props.tolist()])
 
 if __name__ == '__main__':
 

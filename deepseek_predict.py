@@ -91,7 +91,7 @@ def predict_from_string(composition_str):
 # 使用示例
 if __name__ == '__main__':
     # 示例输入
-    example_input = "0.0 0.0015 0.0015 0.0015 0.0102 0.0014 0.7086 0.0021 0.0021 0.0113 0.2475 0.0 0.0026 0.0026 0.0061 0.001 0.0 0.0 0.0 0.0"
+    example_input = "0.0 0.0013 0.005 0.2899 0.0026 0.0 0.7011 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0"
 
     print("正在预测材料性质...")
     results = predict_from_string(example_input)

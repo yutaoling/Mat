@@ -20,7 +20,7 @@ from sklearn.gaussian_process.kernels import Matern
 from bayes_opt.util import ensure_rng
 import torch
 
-from model_env_train import get_model, device
+from model_env_train import get_model, device, N_PROP
 
 ''' botorch GPR part, if needed '''
 # import torch
@@ -201,21 +201,13 @@ def get_mo_ground_truth_func():
     '''
     _func = get_ground_truth_func('model_multi.pth', 'data_multi.pth')
 
-    # _ym_func = get_ground_truth_func('model\\ys_model.pth', 'model\\ys_data.pth', now_prop='ym')
-    # _ys_func = get_ground_truth_func('model\\ys_model.pth', 'model\\ys_data.pth', now_prop='ys')
-    # _uts_func = get_ground_truth_func('model\\uts_model.pth', 'model\\uts_data.pth', now_prop='uts')
-    # _el_func = get_ground_truth_func('model\\el_model.pth', 'model\\el_data.pth', now_prop='el')
-    # _dar_func = get_ground_truth_func('model\\dar_model.pth', 'model\\dar_data.pth', now_prop='dar')
-    # _hv_func = get_ground_truth_func('model\\hv_model.pth', 'model\\hv_data.pth', now_prop='hv')
-
     ''' local optimal maximums for YS, UTS, and ELongation '''
     _mo_scale = np.array([
-        150,
-        1880,
-        2400,
-        42,
-        # 74,
-        560,
+        73,
+        695,
+        780,
+        13.3,
+        297,
     ])
 
     def _mo_raw_func(x):
@@ -341,6 +333,7 @@ class Environment:
 
         self.best_score = float('-inf')
         self.best_x = None
+        self.best_prop = None
 
         '''
             "The answer to the ultimate question of life, 
@@ -380,7 +373,7 @@ class Environment:
         # update scalar func
         self.func = lambda x: float(np.dot(self.raw_mo_func(x) / self.mo_scale, self.mo_weights))
 
-    def update_mo_weights(self, method='improvement', window=20, eps=1e-8):
+    def update_mo_weights(self, method='improvement', window=20, eps=1e-6):
         """Auto-update weights based on information in `surrogate_buffer_list`.
 
         method options:
@@ -402,20 +395,21 @@ class Environment:
             k = max(1, min(window, n // 2))
             recent = vals[-k:]
             prev = vals[-2*k:-k] if n >= 2*k else vals[:k]
-            recent_best = np.max(recent / self.mo_scale, axis=0)
-            prev_best = np.max(prev / self.mo_scale, axis=0)
-            imp = recent_best - prev_best
-            imp = np.maximum(imp, 0.0) + eps
-            w = imp
-            if w.sum() <= 0:
-                w = np.ones_like(w)
+            recent_mean = np.mean(recent / self.mo_scale, axis=0)
+            prev_mean = np.mean(prev / self.mo_scale, axis=0)
+            imp = recent_mean - prev_mean
+            rank = np.argsort(np.argsort(imp))
+            Weight_List=[6, 5, 4, 3, 2]
+            w = np.array([Weight_List[r] for r in rank])
+            w=w / w.sum()
         # normalize and set
-        self.set_mo_weights(w / (w.sum() + 0.0))
+        self.set_mo_weights(w)
 
     def copy_initialization(self, env: Environment):
         ''' copy the randomly initialized exp point from a ref environment instance '''
         self.best_score = float('-inf')
         self.best_x = None
+        self.best_prop = None
 
         self.surrogate_buffer = deepcopy(env.surrogate_buffer)
         self.surrogate_buffer_list = deepcopy(env.surrogate_buffer_list)
@@ -455,6 +449,7 @@ class Environment:
         _best_idx = np.argmax(train_y.reshape(-1))
         self.best_score = train_y.reshape(-1)[_best_idx]
         self.best_x = train_x[_best_idx]
+        self.best_prop = self.raw_mo_func(self.best_x)
 
         ''' sklearn gpr '''
         self.surrogate = GaussianProcessRegressor(
@@ -560,6 +555,7 @@ class Environment:
             if self.best_score < reward:
                 self.best_score = max(self.best_score, reward)
                 self.best_x = next_state_comp
+                self.best_prop = self.raw_mo_func(self.best_x)
             # print(next_state_comp,'\n', self.best_x,'\n',round(reward, 4), round(self.best_score, 4))   # for debug
         else:
             reward = 0.
@@ -570,6 +566,8 @@ class Environment:
         self.surrogate_buffer.add(State.encode_key(state_comp))
         if sum([COMP_MIN_LIMITS[_i] <= state_comp[_i] <= COMP_MAX_LIMITS[_i] for _i in range(len(state_comp))]) == len(state_comp):
             self.best_score = max(self.best_score, state_score)
+            self.best_x = state_comp
+            self.best_prop = self.raw_mo_func(self.best_x)
 
     def sample_action(self, state: State):
         ai_low, ai_high = state.get_action_idx_limits()
@@ -581,6 +579,9 @@ class Environment:
     
     def get_best_x(self):
         return self.best_x
+
+    def get_best_prop(self):
+        return self.best_prop
     
     def get_exp_number(self):
         assert len(self.surrogate_buffer) == len(self.surrogate_buffer_list), \
@@ -595,5 +596,6 @@ if __name__ == '__main__':
     )
     print(env.get_best_score())
     print(env.get_best_x())
+    print(env.get_best_prop())
     # print(env.get_exp_number())
     # print(env.surrogate_buffer)
