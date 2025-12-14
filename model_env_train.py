@@ -37,7 +37,7 @@ PROP_LABELS = {'YM':'YM(GPa)', 'YS':'YS(MPa)', 'UTS':'UTS(MPa)',
 
 def load_data():
     # Load the default dataset
-    data = pd.read_csv('data\\Ti_dataset.csv')
+    data = pd.read_csv('data/Ti_dataset.csv')
     
     # composition labels
     comp_labels = ['Ti', 'Al', 'Zr', 'Mo', 'V', 'Ta', 'Nb', 'Cr', 'Fe', 'Sn']
@@ -69,7 +69,7 @@ def load_data():
 
     prop_data = data_filtered[prop_labels].to_numpy()
 
-    elem_feature = pd.read_excel('data\\elemental_features.xlsx')
+    elem_feature = pd.read_excel('data/elemental_features.xlsx')
     elem_feature = elem_feature[[_ for _ in comp_labels]].to_numpy()
     # transpose: column for each elemental feature, row for each element 
 
@@ -129,7 +129,7 @@ class CustomDataset(Dataset):
         
         return _comp, _proc_bool, _proc_scalar, _prop, _mask
 
-def get_dataloader(data_tuple, batch_size = 16) -> DataLoader:
+def get_dataloader(data_tuple, batch_size = 16, num_workers=4) -> DataLoader:
     ''' 
         get the dataloader
 
@@ -163,7 +163,7 @@ def get_dataloader(data_tuple, batch_size = 16) -> DataLoader:
 
         return comp, proc_bool, proc_scalar, prop, mask, _elem_feature_tensor_clone
 
-    return DataLoader(dataset, batch_size = batch_size, collate_fn = _collate_fn, shuffle = True)
+    return DataLoader(dataset, batch_size = batch_size, collate_fn = _collate_fn, shuffle = True, num_workers=4)
 
 def MaskedMSELoss(out, prop, mask):
     mse_loss = nn.functional.mse_loss(out, prop, reduction='none')
