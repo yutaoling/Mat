@@ -23,6 +23,7 @@ N_PROP = 5
 LEARNING_RATE = 5e-4
 
 device=torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device=torch.device("cpu")
 
 def hidden_init(layer):
     fan_in = layer.weight.data.size()[0]

@@ -182,7 +182,7 @@ def train_validate_split(data_tuple, ratio_tuple = (0.95, 0.04, 0.01)):
     comp_train, comp_tmp, proc_bool_train, proc_bool_tmp, proc_scalar_train, proc_scalar_tmp, prop_train, prop_tmp = \
         train_test_split(comp_data, proc_bool_data, proc_scalar_data, prop_data, test_size = _ratio_1, random_state = _random_seed)
     _ratio_2 = ratio_tuple[2] / sum(ratio_tuple[1:])
-    comp_val_1, comp_val_2, proc_val_1, proc_val_2, prop_val_1, prop_val_2 = \
+    comp_val_1, comp_val_2, proc_bool_val_1, proc_bool_val_2, proc_scalar_val_1, proc_scalar_val_2, prop_val_1, prop_val_2 = \
         train_test_split(comp_tmp, proc_bool_tmp, proc_scalar_tmp, prop_tmp, test_size = _ratio_2, random_state = _random_seed)
 
     return (comp_train, proc_bool_train, proc_scalar_train, prop_train, elem_feature,), \
@@ -224,13 +224,14 @@ def validate_a_model(num_training_epochs = 2000,
     for epoch in range(num_training_epochs):
         model.train()
         _batch_loss_buffer = []
-        for comp, proc, prop, mask, elem_t in dl:
+        for comp, proc_bool, proc_scalar, prop, mask, elem_t in dl:
             # forward pass
             comp = comp.to(device)
-            proc = proc.to(device)
+            proc_bool = proc_bool.to(device)
+            proc_scalar = proc_scalar.to(device)
             prop = prop.to(device)
             elem_t = elem_t.to(device)
-            out = model(comp, elem_t, proc)
+            out = model(comp, elem_t, proc_bool, proc_scalar)
             l = MaskedMSELoss(out, prop.reshape(*(out.shape)), mask.reshape(*(out.shape)))
 
             # backward pass
@@ -319,5 +320,5 @@ def get_model(default_model_pth = 'model.pth',
     return model, d, scalers
 
 if __name__ == '__main__':
-    get_model(f'model_multi.pth',f'data_multi.pth',resume=False,save_path='model_multi_train_err_log.txt')
-    # validate_a_model(num_training_epochs=3000, save_path='model_multi_valid_log_01simple.txt')
+    # get_model(f'model_multi.pth',f'data_multi.pth',resume=False,save_path='model_multi_train_err_log.txt')
+    validate_a_model(num_training_epochs=3000, save_path='model_multi_valid_log_01simple.txt')
