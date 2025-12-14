@@ -163,7 +163,7 @@ def get_dataloader(data_tuple, batch_size = 16, num_workers=4) -> DataLoader:
 
         return comp, proc_bool, proc_scalar, prop, mask, _elem_feature_tensor_clone
 
-    return DataLoader(dataset, batch_size = batch_size, collate_fn = _collate_fn, shuffle = True, num_workers=4)
+    return DataLoader(dataset, batch_size = batch_size, collate_fn = _collate_fn, shuffle = True)
 
 def MaskedMSELoss(out, prop, mask):
     mse_loss = nn.functional.mse_loss(out, prop, reduction='none')
