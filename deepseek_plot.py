@@ -39,20 +39,21 @@ plt.rcParams['font.sans-serif'] = ['SimHei', 'Arial']
 plt.rcParams['axes.unicode_minus'] = False
 
 # 文件名列表
-file_names = ['model_multi_valid_log_01simple.txt']
+file_names = ['model_multi_valid_log_DNN.txt', 'model_multi_valid_log_RNN.txt']
 
 # 类别名称（用于图例）
-categories = ['valid']
+categories = ['DNN', 'RNN']
 
 # 创建2x3的子图布局
-fig, axes = plt.subplots(1, 1, figsize=(12, 8))
-# axes = axes.flatten()  # 将二维数组展平为一维，便于遍历
+fig, axes = plt.subplots(1, 2, figsize=(12, 8))
+
+axes = axes.flatten()  # 将二维数组展平为一维，便于遍历
 
 # 颜色和线型设置
 # 颜色和线型设置
-colors = ['black', 'blue', 'red']  # 修改：提供三种颜色
-line_styles = ['-', '-', '-']  # 修改：提供三种线型
-line_labels = ['Training Loss', 'Valid Set 1 Loss', 'Valid Set 2 Loss']
+colors = ['black', 'blue']  # 修改：提供三种颜色
+line_styles = ['-', '-']  # 修改：提供三种线型
+line_labels = ['Training Loss', 'Valid Set Loss']
 # 遍历每个文件
 for i, (file_name, category) in enumerate(zip(file_names, categories)):
     try:
@@ -62,17 +63,15 @@ for i, (file_name, category) in enumerate(zip(file_names, categories)):
         # 提取各列数据
         epochs = data[:, 0]
         train_loss = data[:, 1]
-        valid1_loss = data[:, 2]
-        valid2_loss = data[:, 3]
+        valid_loss = data[:, 2]
 
         # 在当前子图中绘制三条曲线
-        ax = axes
+        ax = axes[i]
         ax.plot(epochs, train_loss, color=colors[0], linestyle=line_styles[0],
                 label=line_labels[0], linewidth=2)
-        ax.plot(epochs, valid1_loss, color=colors[1], linestyle=line_styles[1],
+        ax.plot(epochs, valid_loss, color=colors[1], linestyle=line_styles[1],
                 label=line_labels[1], linewidth=2)
-        ax.plot(epochs, valid2_loss, color=colors[2], linestyle=line_styles[2],
-                label=line_labels[2], linewidth=2)
+
 
         # 设置子图标题和标签
         ax.set_title(f'Training and Validation Loss', fontsize=14, fontweight='bold')

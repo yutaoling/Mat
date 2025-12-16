@@ -14,8 +14,8 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error
 
 from model_env_DNN import COMP, PROC_BOOL, PROC_SCALAR, PROP, PROP_LABELS
-from model_env_DNN import N_ELEM, N_ELEM_FEAT, N_ELEM_FEAT_P1, N_PROC_BOOL, N_PROC_SCALAR, N_PROP
-from model_env_DNN import CnnDnnModel, device
+from model_env_RNN import N_ELEM, N_ELEM_FEAT, N_ELEM_FEAT_P1, N_PROC_BOOL, N_PROC_SCALAR, N_PROP
+from model_env_RNN import CnnDnnModel, device
 
 def set_seed(seed):
     random.seed(seed)
@@ -40,7 +40,7 @@ def load_data():
     # They are testset
     data = data[data['Activated'] == 1]
 
-    no_labels = ['No']
+    no_labels=['No']
     # composition labels
     comp_labels = COMP
                         
@@ -48,13 +48,10 @@ def load_data():
     proc_bool_labels=PROC_BOOL
     proc_scalar_labels=PROC_SCALAR
 
-    # property labels
-    # YM(GPa), YS(MPa), UTS(MPa), El(%), HV
-    prop_labels = PROP#[PROP_LABELS[pl] for pl in PROP]
-
+    prop_labels = PROP
     # data = data.dropna(subset=prop_labels)
     # Normalize whitespace-only cells to NaN and coerce numeric columns to numbers
-    # data = data.replace(r'^\s*$', 0, regex=True)
+    # data_filtered = data_filtered.replace(r'^\s*$', 0, regex=True)
     # data = data.replace(np.nan, 0, regex=True)
     cols_to_numeric = comp_labels + proc_bool_labels + proc_scalar_labels + prop_labels
     # Some of these columns may not exist in every dataset; filter to existing ones
@@ -68,20 +65,21 @@ def load_data():
     proc_scalar_data = data[proc_scalar_labels].to_numpy()
     prop_data = data[prop_labels].to_numpy()
 
-
     elem_feature = pd.read_excel('data\\elemental_features.xlsx')
-    elem_feature = elem_feature[comp_labels].to_numpy()  # transpose: column for each elemental feature, row for each element 
+    elem_feature = elem_feature[comp_labels].to_numpy()
+    # transpose: column for each elemental feature, row for each element 
+
     # (num_samples, num_elements), (num_samples, num_proc), (num_samples, num_prop), (num_elements, num_elem_features,)
     return no_data, comp_data, proc_bool_data, proc_scalar_data, prop_data, elem_feature
 
 def fit_transform(data_tuple: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray,]):
     '''fit and transform the data'''
     no_data, comp_data, proc_bool_data, proc_scalar_data, prop_data, elem_feature = data_tuple
-    comp_data_scaler, proc_scalar_scaler, prop_data_scaler, elem_feature_scaler = \
+    comp_data_scaler, proc_scalar_data_scaler, prop_data_scaler, elem_feature_scaler = \
         [StandardScaler() for _ in range(len(data_tuple)-2)]
     
     comp_data = comp_data_scaler.fit_transform(comp_data)
-    proc_scalar_data = proc_scalar_scaler.fit_transform(proc_scalar_data)
+    proc_scalar_data = proc_scalar_data_scaler.fit_transform(proc_scalar_data)
     prop_data = prop_data_scaler.fit_transform(prop_data)
     ''' 
         input elem_feature:     (num_elem_features, num_elements, ), as defined in the EXCEL file
@@ -95,7 +93,7 @@ def fit_transform(data_tuple: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarr
     # return the data and the scalers
     return (
         (no_data, comp_data, proc_bool_data, proc_scalar_data, prop_data, elem_feature,),
-        (comp_data_scaler, proc_scalar_scaler, prop_data_scaler, elem_feature_scaler,),
+        (comp_data_scaler, proc_scalar_data_scaler, prop_data_scaler, elem_feature_scaler,),
     )
 
 class CustomDataset(Dataset):
@@ -128,8 +126,7 @@ class CustomDataset(Dataset):
         _prop = np.nan_to_num(_prop, nan=-1)
         
         return _no, _comp, _proc_bool, _proc_scalar, _prop, _mask
-
-def get_dataloader(data_tuple, batch_size = 16) -> DataLoader:
+def get_dataloader(data_tuple, batch_size = 16, num_workers=4) -> DataLoader:
     ''' 
         get the dataloader
 
@@ -186,6 +183,7 @@ def train_validate_split(data_tuple, ratio_tuple = (0.95, 0.05)):
     return (no_train, comp_train, proc_bool_train, proc_scalar_train, prop_train, elem_feature,), \
             (no_val, comp_val, proc_bool_val, proc_scalar_val, prop_val, elem_feature,)
 
+
 def train_validate_2_split(data_tuple, ratio_tuple = (0.95, 0.04, 0.01)):
     ''' 
         split the data into train, validate_1 and validate_2 set
@@ -194,21 +192,23 @@ def train_validate_2_split(data_tuple, ratio_tuple = (0.95, 0.04, 0.01)):
     no_data, comp_data, proc_bool_data, proc_scalar_data, prop_data, elem_feature = data_tuple
     _ratio_1 = sum(ratio_tuple[1:]) / sum(ratio_tuple)
     no_train, no_tmp, comp_train, comp_tmp, proc_bool_train, proc_bool_tmp, proc_scalar_train, proc_scalar_tmp, prop_train, prop_tmp = \
-        train_test_split(no_data, comp_data, proc_bool_data, proc_scalar_data, prop_data, test_size = _ratio_1, random_state = 114514)# _random_seed
+        train_test_split(no_data, comp_data, proc_bool_data, proc_scalar_data, prop_data, test_size = _ratio_1, random_state = 114514)# _random_seed shuffle=False
     _ratio_2 = ratio_tuple[2] / sum(ratio_tuple[1:])
     no_val_1, no_val_2, comp_val_1, comp_val_2, proc_bool_val_1, proc_bool_val_2, proc_scalar_val_1, proc_scalar_val_2, prop_val_1, prop_val_2 = \
         train_test_split(no_tmp, comp_tmp, proc_bool_tmp, proc_scalar_tmp, prop_tmp, test_size = _ratio_2, random_state = 114514)# _random_seed
+
     return (no_train, comp_train, proc_bool_train, proc_scalar_train, prop_train, elem_feature,), \
             (no_val_1, comp_val_1, proc_bool_val_1, proc_scalar_val_1, prop_val_1, elem_feature,), \
             (no_val_2, comp_val_2, proc_bool_val_2, proc_scalar_val_2, prop_val_2, elem_feature,)
 
-def validate(model: CnnDnnModel, data_tuple: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray,]) -> float:
+
+def validate(model: CnnDnnModel, data_tuple: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray,]) -> float:
     ''' calculate the R2 score of the model on the validate set '''
     model.to(device)
     model.eval()
     dl = get_dataloader(data_tuple, len(data_tuple[0]))
     no, comp, proc_bool, proc_scalar, prop, mask, elem_t = next(iter(dl))
-
+    
     no = no.to(device)
     comp = comp.to(device)
     proc_bool = proc_bool.to(device)
@@ -229,9 +229,12 @@ def validate_a_model(num_training_epochs = 2000,
     model = CnnDnnModel().to(device)
     # d = load_data()
     # d, scalers = fit_transform(d)
+    # joblib.dump((d, scalers), 'data_multi.pth')
     d, scalers = joblib.load('data_multi.pth')
-    # train_d, val_d = train_validate_split(d, (0.9, 0.1))
+    train_d, val_d = train_validate_split(d, (0.9, 0.1))
+    # joblib.dump((train_d, val_d, scalers), 'data_multi_divided.pth')
     train_d, val_d, scalers = joblib.load('data_multi_divided.pth')
+
     loss_fn = torch.nn.MSELoss()
     dl = get_dataloader(train_d, batch_size)
     # train one epoch
@@ -263,7 +266,7 @@ def validate_a_model(num_training_epochs = 2000,
         epoch_log_buffer.append((epoch, _batch_mean_loss, val_r2))
         if not epoch % 25:
             print(epoch, _batch_mean_loss, val_r2)
-
+    
     if save_path:
         np.savetxt(
             save_path,
@@ -336,5 +339,5 @@ def get_model(default_model_pth = 'model.pth',
     return model, d, scalers
 
 if __name__ == '__main__':
-    get_model(f'model_multi_DNN.pth',f'data_multi.pth',resume=False,save_path='model_multi_DNN_train_err_log.txt')
-    validate_a_model(num_training_epochs=2000, save_path='model_multi_valid_log_DNN.txt')
+    # get_model(f'model_multi_RNN.pth',f'data_multi.pth',resume=False,save_path='model_multi_RNN_train_err_log.txt')
+    validate_a_model(num_training_epochs=2000, save_path='model_multi_valid_log_RNN.txt')
