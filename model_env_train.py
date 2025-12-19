@@ -13,9 +13,9 @@ from sklearn.base import TransformerMixin
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error
 
-from model_env_DNN import COMP, PROC_BOOL, PROC_SCALAR, PROP, PROP_LABELS
-from model_env_DNN import N_ELEM, N_ELEM_FEAT, N_ELEM_FEAT_P1, N_PROC_BOOL, N_PROC_SCALAR, N_PROP
-from model_env_DNN import CnnDnnModel, device
+from model_env import COMP, PROC_BOOL, PROC_SCALAR, PROP, PROP_LABELS
+from model_env import N_ELEM, N_ELEM_FEAT, N_ELEM_FEAT_P1, N_PROC_BOOL, N_PROC_SCALAR, N_PROP
+from model_env import CnnDnnModel, device
 
 def set_seed(seed):
     random.seed(seed)
@@ -28,7 +28,8 @@ def set_seed(seed):
     torch.backends.cudnn.benchmark = False
 
 # 设置随机数种子
-set_seed(0) # default 0
+seed = 0
+set_seed(seed) # default 0
 
 seeds = np.random.randint(0, 9999, (9999, ))
 
@@ -36,8 +37,7 @@ seeds = np.random.randint(0, 9999, (9999, ))
 def load_data():
     # Load the default dataset
     data = pd.read_csv('data\\Ti_dataset.csv')
-    data.loc[range(21, 24), 'Activated'] = 0
-    # They are testset
+    
     data = data[data['Activated'] == 1]
 
     no_labels = ['No']
@@ -67,36 +67,61 @@ def load_data():
     proc_bool_data = data[proc_bool_labels].to_numpy()
     proc_scalar_data = data[proc_scalar_labels].to_numpy()
     prop_data = data[prop_labels].to_numpy()
-
+    
 
     elem_feature = pd.read_excel('data\\elemental_features.xlsx')
     elem_feature = elem_feature[comp_labels].to_numpy()  # transpose: column for each elemental feature, row for each element 
     # (num_samples, num_elements), (num_samples, num_proc), (num_samples, num_prop), (num_elements, num_elem_features,)
-    return no_data, comp_data, proc_bool_data, proc_scalar_data, prop_data, elem_feature
-
-def fit_transform(data_tuple: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray,]):
-    '''fit and transform the data'''
-    no_data, comp_data, proc_bool_data, proc_scalar_data, prop_data, elem_feature = data_tuple
-    comp_data_scaler, proc_scalar_scaler, prop_data_scaler, elem_feature_scaler = \
-        [StandardScaler() for _ in range(len(data_tuple)-2)]
-    
-    comp_data = comp_data_scaler.fit_transform(comp_data)
-    proc_scalar_data = proc_scalar_scaler.fit_transform(proc_scalar_data)
-    prop_data = prop_data_scaler.fit_transform(prop_data)
-    ''' 
-        input elem_feature:     (num_elem_features, num_elements, ), as defined in the EXCEL file
-        output elem_feature:    (num_elements, num_elem_features, )
-        however sklearn scaler works colum-wise,
-        should calculate the mu and sigma of element features (say, VEC) for diff elements,
-        so transpose the elem_feature
+    d = (no_data, comp_data, proc_bool_data, proc_scalar_data, prop_data, elem_feature,)
     '''
-    elem_feature = elem_feature_scaler.fit_transform(elem_feature.T)
+        test_data = data[data['Selected_Test_Set'] == 1]
+        no_test_data = test_data[no_labels].to_numpy()
+        comp_test_data = test_data[comp_labels].to_numpy()
+        proc_bool_test_data = test_data[proc_bool_labels].to_numpy()
+        proc_scalar_test_data = test_data[proc_scalar_labels].to_numpy()
+        prop_test_data = test_data[prop_labels].to_numpy()
+        test_data = (no_test_data, comp_test_data, proc_bool_test_data, proc_scalar_test_data, prop_test_data, elem_feature,)
+    '''
 
-    # return the data and the scalers
-    return (
-        (no_data, comp_data, proc_bool_data, proc_scalar_data, prop_data, elem_feature,),
-        (comp_data_scaler, proc_scalar_scaler, prop_data_scaler, elem_feature_scaler,),
-    )
+    return d# , test_data
+
+def fit_transform(data_tuple: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray,], scalers = None):
+    '''fit and transform the data'''
+    if scalers is not None:
+        no_data, comp_data, proc_bool_data, proc_scalar_data, prop_data, elem_feature = data_tuple
+        comp_data = scalers[0].transform(comp_data)
+        proc_bool_data = scalers[1].transform(proc_bool_data)
+        proc_scalar_data = scalers[2].transform(proc_scalar_data)
+        prop_data = scalers[3].transform(prop_data)
+        elem_feature = scalers[4].transform(elem_feature.T)
+        return (
+            (no_data, comp_data, proc_bool_data, proc_scalar_data, prop_data, elem_feature,),
+            scalers,
+        )
+
+    else:
+        no_data, comp_data, proc_bool_data, proc_scalar_data, prop_data, elem_feature = data_tuple
+        comp_data_scaler, proc_bool_scaler, proc_scalar_scaler, prop_data_scaler, elem_feature_scaler = \
+            [StandardScaler() for _ in range(len(data_tuple)-1)]
+        
+        comp_data = comp_data_scaler.fit_transform(comp_data)
+        proc_bool_data = proc_bool_scaler.fit_transform(proc_bool_data)
+        proc_scalar_data = proc_scalar_scaler.fit_transform(proc_scalar_data)
+        prop_data = prop_data_scaler.fit_transform(prop_data)
+        ''' 
+            input elem_feature:     (num_elem_features, num_elements, ), as defined in the EXCEL file
+            output elem_feature:    (num_elements, num_elem_features, )
+            however sklearn scaler works colum-wise,
+            should calculate the mu and sigma of element features (say, VEC) for diff elements,
+            so transpose the elem_feature
+        '''
+        elem_feature = elem_feature_scaler.fit_transform(elem_feature.T)
+
+        # return the data and the scalers
+        return (
+            (no_data, comp_data, proc_bool_data, proc_scalar_data, prop_data, elem_feature,),
+            (comp_data_scaler, proc_bool_scaler, proc_scalar_scaler, prop_data_scaler, elem_feature_scaler,),
+        )
 
 class CustomDataset(Dataset):
     ''' store comp, proc, prop data '''
@@ -182,7 +207,7 @@ def train_validate_split(data_tuple, ratio_tuple = (0.95, 0.05)):
     no_data, comp_data, proc_bool_data, proc_scalar_data, prop_data, elem_feature = data_tuple
     _ratio_1 = sum(ratio_tuple[1:]) / sum(ratio_tuple)
     no_train, no_val, comp_train, comp_val, proc_bool_train, proc_bool_val, proc_scalar_train, proc_scalar_val, prop_train, prop_val = \
-        train_test_split(no_data, comp_data, proc_bool_data, proc_scalar_data, prop_data, test_size = _ratio_1, random_state = 114514)# _random_seed
+        train_test_split(no_data, comp_data, proc_bool_data, proc_scalar_data, prop_data, test_size = _ratio_1, random_state = _random_seed)
     return (no_train, comp_train, proc_bool_train, proc_scalar_train, prop_train, elem_feature,), \
             (no_val, comp_val, proc_bool_val, proc_scalar_val, prop_val, elem_feature,)
 
@@ -222,16 +247,49 @@ def validate(model: CnnDnnModel, data_tuple: Tuple[np.ndarray, np.ndarray, np.nd
     mse_loss = MaskedMSELoss(out, prop, mask)
     return mse_loss.item()
 
+def Make_Masked_Data(train_data, test_data, rng_seed = seed):
+    train_prop = train_data[4]
+    test_prop = test_data[4]
+    mask_prop = (~np.isnan(train_prop)).mean(axis=0)
+    num_samples = test_prop.shape[0]
+    num_props = mask_prop.shape[0]
+    rng = np.random.default_rng(rng_seed)
+    mask = rng.random((num_samples, num_props)) < mask_prop
+    random_test_mask = None
+    for _ in range(10):# max retry times
+        valid = mask.sum(axis=1)>0
+        if valid.all():
+            random_test_mask = mask.astype(np.float32)
+            break
+        idx = np.where(~valid)[0]
+        mask[idx]=rng.random((len(idx), num_props)) < mask_prop
+    if random_test_mask is None:
+        # 选择 training set 中出现概率最大的 property
+        fallback_idx = np.argmax(mask_prop)
+        random_test_mask = mask.astype(np.float32)
+        invalid_rows = random_test_mask.sum(axis=1) == 0
+        random_test_mask[invalid_rows, fallback_idx] = 1.0
+    test_prop_masked = test_prop.copy()
+    test_prop_masked[random_test_mask==0]=np.nan
+    masked_test_data = (test_data[0], test_data[1], test_data[2], test_data[3], test_prop_masked, test_data[5])
+    return masked_test_data
+
+
 def validate_a_model(num_training_epochs = 2000,
                      batch_size = 16,
-                     save_path = None,):
+                     save_path = None,
+                     temp = None,):
     ''' util func for training_epoch_num validation '''
-    model = CnnDnnModel().to(device)
-    # d = load_data()
-    # d, scalers = fit_transform(d)
-    d, scalers = joblib.load('data_multi.pth')
-    # train_d, val_d = train_validate_split(d, (0.9, 0.1))
-    train_d, val_d, scalers = joblib.load('data_multi_divided.pth')
+    model = CnnDnnModel(temp).to(device)
+    d = load_data()    
+    d, scalers = fit_transform(d)
+    # test_data, scalers = fit_transform(test_data, scalers=scalers)
+    # d, scalers = joblib.load('data_multi.pth')
+    train_d, val_d = train_validate_split(d, (0.85, 0.15))
+
+    # masked_test_data = Make_Masked_Data(train_data = train_d, test_data = test_data)
+
+    # train_d, val_d, scalers = joblib.load('data_multi_divided.pth')
     loss_fn = torch.nn.MSELoss()
     dl = get_dataloader(train_d, batch_size)
     # train one epoch
@@ -260,6 +318,8 @@ def validate_a_model(num_training_epochs = 2000,
         # model.eval()
         _batch_mean_loss = np.mean(_batch_loss_buffer)
         val_r2 = validate(model, val_d)
+        # test_r2 = validate(model, test_data)
+        # masked_test_r2 = validate(model, masked_test_data)
         epoch_log_buffer.append((epoch, _batch_mean_loss, val_r2))
         if not epoch % 25:
             print(epoch, _batch_mean_loss, val_r2)
@@ -279,9 +339,9 @@ def train_a_model(num_training_epochs = 1000,
                     save_path = None,):
     ''' train a model '''
     model = CnnDnnModel().to(device)
-    # d = load_data()
-    # d, scalers = fit_transform(d)
-    d, scalers = joblib.load('data_multi.pth')
+    d = load_data()
+    d, scalers = fit_transform(d)
+    # d, scalers = joblib.load('data_multi.pth')
 
     train_d = d
     loss_fn = torch.nn.MSELoss()
@@ -336,5 +396,10 @@ def get_model(default_model_pth = 'model.pth',
     return model, d, scalers
 
 if __name__ == '__main__':
-    get_model(f'model_multi_DNN.pth',f'data_multi.pth',resume=False,save_path='model_multi_DNN_train_err_log.txt')
-    validate_a_model(num_training_epochs=2000, save_path='model_multi_valid_log_DNN.txt')
+    # get_model(f'model_multi_DNN.pth',f'data_multi.pth',resume=False,save_path='model_multi_DNN_train_err_log.txt')
+    for n_c in [0, 1, 2]:
+        for n_n in [16, 32, 64]:
+            for n_l in [1, 2, 3]:
+                print(f'Training model with no CNN layer(s), {n_l} DNN layer(s), {n_n} neurons per DNN layer')
+                validate_a_model(num_training_epochs=1000, save_path=f'model_valid_log_{n_c}_CNN_{n_l}_DNN_{n_n}_nerons.txt', temp=[n_c,n_l,n_n])
+    # validate_a_model(num_training_epochs=500, save_path='model_multi_valid_log_DNN.txt')
