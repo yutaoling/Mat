@@ -10,11 +10,7 @@ torch.autograd.set_detect_anomaly(True)
 
 COMP = ['Ti', 'Al', 'Zr', 'Mo', 'V', 'Ta', 'Nb', 'Cr', 'Fe', 'Sn']
 
-PROC_BOOL=[
-    'InitStat_Case', 'InitStat_Rolled', 'InitStat_Forged', 'InitStat_Extrusion',
-    'Deform',
-    'HT1','Cool1_WQ','Cool1_AC','Cool1_FC','Cool1_FCAC',
-    'HT2','Cool2_WQ','Cool2_AC','Cool2_FC','Cool2_FCAC']
+PROC_BOOL=['InitStat','Deform','HT1','Cool1','HT2','Cool2']
 PROC_SCALAR=['DeformTemp_C', 'DeformRate','HT1Temp_C','HT1Time_h','HT2Temp_C','HT2Time_h']
 PROP=['YM', 'YS', 'UTS', 'El']
 PROP_LABELS = {'YM':'YM(GPa)', 'YS':'YS(MPa)', 'UTS':'UTS(MPa)',

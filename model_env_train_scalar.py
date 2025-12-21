@@ -13,9 +13,9 @@ from sklearn.base import TransformerMixin
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error
 
-from model_env import COMP, PROC_BOOL, PROC_SCALAR, PROP, PROP_LABELS
-from model_env import N_ELEM, N_ELEM_FEAT, N_ELEM_FEAT_P1, N_PROC_BOOL, N_PROC_SCALAR, N_PROP
-from model_env import CnnDnnModel, device
+from model_env_scalar import COMP, PROC_BOOL, PROC_SCALAR, PROP, PROP_LABELS
+from model_env_scalar import N_ELEM, N_ELEM_FEAT, N_ELEM_FEAT_P1, N_PROC_BOOL, N_PROC_SCALAR, N_PROP
+from model_env_scalar import CnnDnnModel, device
 
 def set_seed(seed):
     random.seed(seed)
@@ -297,8 +297,6 @@ def validate_a_model(num_training_epochs = 2000,
     for epoch in range(num_training_epochs):
         model.train()
         _batch_loss_buffer = []
-        max_loss_epoch = -float('inf')
-        max_sample_epoch = None
         for no, comp, proc_bool, proc_scalar, prop, mask, elem_t in dl:
             # forward pass
             no = no.to(device)
@@ -309,22 +307,6 @@ def validate_a_model(num_training_epochs = 2000,
             elem_t = elem_t.to(device)
             out = model(comp, elem_t, proc_bool, proc_scalar)
             l = MaskedMSELoss(out, prop.reshape(*(out.shape)), mask.reshape(*(out.shape)))
-
-            # Calculate per-sample losses
-            mse_loss = nn.functional.mse_loss(out, prop.reshape(*(out.shape)), reduction='none')
-            masked_loss = mse_loss * mask.reshape(*(out.shape))
-            sample_losses = masked_loss.sum(dim=1) / mask.reshape(*(out.shape)).sum(dim=1).clamp(min=1e-6)
-            current_max_loss = sample_losses.max()
-            if current_max_loss > max_loss_epoch:
-                max_loss_epoch = current_max_loss.item()
-                max_idx = sample_losses.argmax()
-                max_sample_epoch = {
-                    'loss': current_max_loss.item(),
-                    'predicted': out[max_idx].detach().cpu().numpy(),
-                    'actual': prop[max_idx].detach().cpu().numpy(),
-                    'mask': mask[max_idx].detach().cpu().numpy(),
-                    'no': no[max_idx].detach().cpu().numpy(),
-                }
 
             # backward pass
             model.optimizer.zero_grad()
@@ -341,14 +323,6 @@ def validate_a_model(num_training_epochs = 2000,
         epoch_log_buffer.append((epoch, _batch_mean_loss, val_r2))
         if not epoch % 25:
             print(epoch, _batch_mean_loss, val_r2)
-            if max_sample_epoch is not None:
-                predicted_inv = scalers[3].inverse_transform(max_sample_epoch['predicted'].reshape(1, -1))
-                actual_inv = max_sample_epoch['actual'].copy().reshape(1, -1)
-                actual_inv[actual_inv == -1] = np.nan  # replace -1 with nan
-                actual_inv = scalers[3].inverse_transform(actual_inv)
-                print(f"Max loss sample in epoch {epoch}: Number={int(max_sample_epoch['no'].flatten()[0])}, loss={max_sample_epoch['loss']:.6f}")
-                print(f"Predicted (original): {predicted_inv.flatten()}")
-                print(f"Actual (original): {actual_inv.flatten()}")
 
     if save_path:
         np.savetxt(
@@ -423,8 +397,8 @@ def get_model(default_model_pth = 'model.pth',
 
 if __name__ == '__main__':
     # get_model(f'model_multi_DNN.pth',f'data_multi.pth',resume=False,save_path='model_multi_DNN_train_err_log.txt')
-    for n_c in [1, 2]:
-        for n_n in [32, 64]:
+    for n_c in [0, 1, 2]:
+        for n_n in [16, 32, 64]:
             for n_l in [1, 2, 3]:
                 print(f'Training model with {n_c} CNN layer(s), {n_l} DNN layer(s), {n_n} neurons per DNN layer')
                 validate_a_model(num_training_epochs=1000, save_path=f'model_valid_log_{n_c}_CNN_{n_l}_DNN_{n_n}_nerons.txt', temp=[n_c,n_l,n_n])
