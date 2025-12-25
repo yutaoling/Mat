@@ -75,7 +75,7 @@ for i in range(3):
                 valid_loss = data[:, 2]
 
                 # 在当前子图中绘制三条曲线
-                ax = axes[9*i+3*j+k]
+                ax = axes[9*k+3*i+j]
                 ax.set_xscale('log')
                 ax.set_yscale('log')
                 ax.plot(epochs, train_loss, color=colors[0], linestyle=line_styles[0],
@@ -108,7 +108,7 @@ for i in range(3):
                 print(f"处理文件 {file_name} 时出错: {e}")
 
             file_name = f'model_valid_log/1219_012_123_136_tuned_dataset_scalar_2/model_valid_log_{n_c_list[i]}_CNN_{n_l_list[j]}_DNN_{n_n_list[k]}_nerons.txt'
-
+'''
     # for i, (file_name, category) in enumerate(zip(file_names, categories)):
             try:
                 # 读取数据
@@ -120,7 +120,7 @@ for i in range(3):
                 valid_loss = data[:, 2]
 
                 # 在当前子图中绘制三条曲线
-                ax = axes[9*i+3*j+k]
+                ax = axes[9*k+3*i+j]
                 ax.set_xscale('log')
                 ax.set_yscale('log')
                 ax.plot(epochs, train_loss, color=colors[2], linestyle=line_styles[2],
@@ -152,7 +152,7 @@ for i in range(3):
             except Exception as e:
                 print(f"处理文件 {file_name} 时出错: {e}")
 
-
+'''
 # 调整子图间距
 plt.tight_layout(pad=0.5)
 
