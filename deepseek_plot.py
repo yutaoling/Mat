@@ -193,7 +193,7 @@ colors = ['black', 'blue', 'red', 'green']  # 修改：提供三种颜色
 line_styles = ['-', '-', '-', '-']  # 修改：提供三种线型
 line_labels = ['Training Loss', 'Valid Loss', 'Scalar T L', 'Scalar V L']  # 修改：提供三种标签
 # 遍历每个文件
-file_name = f'model_multi_valid_log_DNN.txt'
+file_name = f'model_multi_valid_log_DNN_attention.txt'
 
     # for i, (file_name, category) in enumerate(zip(file_names, categories)):
 try:

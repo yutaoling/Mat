@@ -308,6 +308,79 @@ class FCNN_Model(nn.Module):
         x = torch.cat([ym, ys, uts, el, hv], dim=-1)
         return x
 
+class FCNN_Attention_Model(nn.Module):
+    def __init__(self):
+        super(FCNN_Attention_Model, self).__init__()
+
+        self.elem_input_dim = N_ELEM_FEAT_P1
+        self.elem_hidden_dim = 64
+
+        self.elem_encoder = nn.Sequential(
+            nn.Linear(self.elem_input_dim, self.elem_hidden_dim),
+            nn.BatchNorm1d(N_ELEM),
+            nn.LeakyReLU(0.2),
+            nn.Linear(self.elem_hidden_dim, self.elem_hidden_dim),
+            nn.LeakyReLU(0.2),
+        )
+
+        self.attention = nn.Sequential(
+            nn.Linear(self.elem_hidden_dim, 1),
+            nn.Softmax(dim=1),
+        )
+
+        self.proc_phase_dim = N_PROC_BOOL + N_PROC_SCALAR + N_PHASE_SCALAR
+        self.global_hidden_dim = 128
+
+        self.fc_main = nn.Sequential(
+            nn.Linear(self.elem_hidden_dim + self.proc_phase_dim, self.global_hidden_dim),
+            nn.BatchNorm1d(self.global_hidden_dim),
+            nn.LeakyReLU(0.2),
+            nn.Dropout(0.4),
+        )
+
+        self.branch_dim = 64
+
+        self.head_ym = self._make_head(self.branch_dim, 1)
+        self.head_s = self._make_head(self.branch_dim, 2)
+        self.head_el = self._make_head(self.branch_dim, 1)
+        self.head_hv = self._make_head(self.branch_dim, 1)
+
+        self.lr = LEARNING_RATE        
+        self.optimizer = optim.Adam(self.parameters(), lr=self.lr, weight_decay=1e-3)
+
+
+    def _make_head(self, input_dim, output_dim):
+        return nn.Sequential(
+            nn.Linear(self.global_hidden_dim, input_dim),
+            nn.LeakyReLU(0.2),
+            nn.Linear(input_dim, output_dim),
+        )
+
+    def forward(self, comp, elem_feature, proc_bool, proc_scalar, phase_scalar):
+        comp_sq = comp.squeeze(1)
+        feat_sq = elem_feature.squeeze(1)
+        x_elem = torch.cat([comp_sq, feat_sq], dim=-1)
+
+        elem_emb = self.elem_encoder(x_elem)
+
+        attn_scores = self.attention(elem_emb)
+        alloy_emb = torch.sum(elem_emb * attn_scores, dim=1)
+
+        proc_phase = torch.cat(
+            [proc_bool.reshape(-1, N_PROC_BOOL), 
+            proc_scalar.reshape(-1, N_PROC_SCALAR),
+            phase_scalar.reshape(-1, N_PHASE_SCALAR)], dim=-1)
+        x = torch.cat([alloy_emb, proc_phase], dim=-1)
+        x = self.fc_main(x)
+
+        ym = self.head_ym(x)
+        s = self.head_s(x)
+        el = self.head_el(x)
+        hv = self.head_hv(x)
+
+        out = torch.cat([ym, s, el, hv], dim=-1)
+
+        return out
 
 
 
@@ -318,5 +391,5 @@ if __name__ == '__main__':
                  torch.ones((_batch_size, 1, N_PROC_BOOL, 1)).to(device), \
                  torch.ones((_batch_size, 1, N_PROC_SCALAR, 1)).to(device), \
                  torch.ones((_batch_size, 1, N_PHASE_SCALAR, 1)).to(device))
-    model = FCNN_Model().to(device)
+    model = FCNN_Attention_Model().to(device)
     print(model(*test_input).size())

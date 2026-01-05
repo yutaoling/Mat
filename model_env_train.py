@@ -15,7 +15,7 @@ from sklearn.metrics import mean_squared_error
 
 from model_env import ID, COMP, PROC_BOOL, PROC_SCALAR, PHASE_SCALAR, PROP
 from model_env import N_ELEM, N_ELEM_FEAT, N_ELEM_FEAT_P1, N_PROC_BOOL, N_PROC_SCALAR, N_PHASE_SCALAR, N_PROP
-from model_env import CnnDnnModel, CNN_FCNN_MESH_Model, FCNN_Model, device
+from model_env import CnnDnnModel, CNN_FCNN_MESH_Model, FCNN_Model, FCNN_Attention_Model, device
 from model_env import N_YM, N_YS, N_UTS, N_EL, N_HV, N_PROP_SAMPLE, N_SUM_PROP_SAMPLE
 
 def set_seed(seed):
@@ -287,7 +287,7 @@ def validate_a_model(num_training_epochs = 2000,
                      batch_size = 16,
                      save_path = None,
                      temp = None,):
-    model = FCNN_Model().to(device)
+    model = FCNN_Attention_Model().to(device)
     d = load_data()
     d, scalers = fit_transform(d)
     d = filter_activated_data(d, activated_value=1)
@@ -384,7 +384,7 @@ def validate_a_model(num_training_epochs = 2000,
     
     return model, d, scalers
 
-def train_a_model(model = FCNN_Model,
+def train_a_model(model = FCNN_Attention_Model,
                     num_training_epochs = 1000,
                     batch_size = 16,
                     save_path = None,):
@@ -426,7 +426,7 @@ def train_a_model(model = FCNN_Model,
     
     return model, d, scalers
 
-def get_model(model = FCNN_Model,
+def get_model(model = FCNN_Attention_Model,
               default_model_pth = 'model.pth',
               default_data_pth = 'data.pth',
               resume = False,
