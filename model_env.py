@@ -7,23 +7,39 @@ from torch.utils.data import DataLoader, TensorDataset
 import torch.nn.init as init
 
 torch.autograd.set_detect_anomaly(True)
-
-COMP = ['Ti', 'Al', 'Zr', 'Mo', 'V', 'Ta', 'Nb', 'Cr', 'Fe', 'Sn']
+ID = ['id', 'Activated']
+COMP = [
+    'Ti', 'Al', 'V', 'Cr', 'Mn', 'Fe', 'Cu', 
+    'Zr', 'Nb', 'Mo', 'Sn', 'Hf', 'Ta', 'W', 
+    'Si', 'C', 'N', 'O', 'Sc'
+    ]
 PROC_BOOL=[
-    'InitStat_Case', 'InitStat_Rolled', 'InitStat_Forged', 'InitStat_Extrusion',
-    'Deform',
-    'HT1','Cool1_WQ','Cool1_AC','Cool1_FC','Cool1_FCAC',
-    'HT2','Cool2_WQ','Cool2_AC','Cool2_FC','Cool2_FCAC']
-PROC_SCALAR=['DeformTemp_C', 'DeformRate','HT1Temp_C','HT1Time_h','HT2Temp_C','HT2Time_h']
-PROP=['YM', 'YS', 'UTS', 'El']
-PROP_LABELS = {'YM':'YM(GPa)', 'YS':'YS(MPa)', 'UTS':'UTS(MPa)',
-               'El':'El(%)', 'HV':'HV'}
+    'Is_Not_Wrought', 'Is_Wrought',
+    'HT1_Quench','HT1_Air','HT1_Furnace',
+    'HT2_Quench','HT2_Air','HT2_Furnace',
+    ]
+PROC_SCALAR=['Def_Temp', 'Def_Strain',
+    'HT1_Temp','HT1_Time',
+    'HT2_Temp','HT2_Time'
+    ]
+PHASE_SCALAR=['Mo_eq', 'Al_eq', 'beta_transform_T']
+PROP=['YM', 'YS', 'UTS', 'El', 'HV']
+
+N_YM=850
+N_YS=935
+N_UTS=945
+N_EL=790
+N_HV=185
+N_PROP_SAMPLE = [N_YM, N_YS, N_UTS, N_EL, N_HV]
+N_SUM_PROP_SAMPLE = sum(N_PROP_SAMPLE)
+
 
 N_ELEM = len(COMP)
 N_ELEM_FEAT = 30
 N_ELEM_FEAT_P1 = N_ELEM_FEAT + 1
 N_PROC_BOOL = len(PROC_BOOL)
 N_PROC_SCALAR = len(PROC_SCALAR)
+N_PHASE_SCALAR = len(PHASE_SCALAR)
 N_PROP = len(PROP)
 LEARNING_RATE = 5e-4
 
@@ -212,26 +228,41 @@ class FCNN_Model(nn.Module):
     def __init__(self):
         super(FCNN_Model, self).__init__()
 
-        self._n_in_fcnn = N_ELEM + N_ELEM_FEAT + N_PROC_BOOL + N_PROC_SCALAR
-        self.fc1 = nn.Linear(self._n_in_fcnn, 64)
-        self.fc2 = nn.Linear(64, 64)
+        self._n_in_fcnn = N_ELEM + N_ELEM_FEAT + N_PROC_BOOL + N_PROC_SCALAR + N_PHASE_SCALAR
+        self._n_fcnn = 128
+        self._n_branch = 64
+        self._n_hv = 32
+        self.fc1 = nn.Linear(self._n_in_fcnn, self._n_fcnn)
+        self.bn1 = nn.BatchNorm1d(self._n_fcnn)
+        self.fc2 = nn.Linear(self._n_fcnn, self._n_fcnn)
+        self.bn2 = nn.BatchNorm1d(self._n_fcnn)
+        self.fc3 = nn.Linear(self._n_fcnn, self._n_fcnn)
+        self.bn3 = nn.BatchNorm1d(self._n_fcnn)
 
-        self.fc_ym = nn.Linear(64, 32)
-        self.fc_ys = nn.Linear(64, 32)
-        self.fc_uts = nn.Linear(64, 32)
-        self.fc_el = nn.Linear(64, 32)
-        self.out_ym = nn.Linear(32, 1)
-        self.out_ys = nn.Linear(32, 1)
-        self.out_uts = nn.Linear(32, 1)
-        self.out_el = nn.Linear(32, 1)
+        self.fc_ym1 = nn.Linear(self._n_fcnn, self._n_branch)
+        self.bn_ym = nn.BatchNorm1d(self._n_branch)
+        self.fc_ym2 = nn.Linear(self._n_branch, self._n_branch)
+        self.out_ym = nn.Linear(self._n_branch, 1)
 
-        self.af = nn.ReLU()
-        self.dropout = nn.Dropout(0.5)
+        self.fc_s = nn.Linear(self._n_fcnn, self._n_branch)
+        self.bn_s = nn.BatchNorm1d(self._n_branch)
+        self.out_s = nn.Linear(self._n_branch, self._n_branch)
+        self.out_ys = nn.Linear(self._n_branch, 1)
+        self.out_uts = nn.Linear(self._n_branch, 1)
+        self.out_el = nn.Linear(self._n_branch, 1)
+
+        self.fc_hv1 = nn.Linear(self._n_fcnn, self._n_hv)
+        self.bn_hv = nn.BatchNorm1d(self._n_hv)
+        self.fc_hv2 = nn.Linear(self._n_hv, self._n_hv)
+        self.out_hv = nn.Linear(self._n_hv, 1)
+
+        self.af = nn.LeakyReLU(0.2)
+        self.dropout = nn.Dropout(0.2)
 
         self.reset_parameters()
 
         self.lr = LEARNING_RATE        
-        self.optimizer = optim.Adam(self.parameters(), lr=self.lr)
+        self.optimizer = optim.Adam(self.parameters(), lr=self.lr, weight_decay=1e-4)
         
 
     def reset_parameters(self):
@@ -246,20 +277,35 @@ class FCNN_Model(nn.Module):
                 if m.weight is not None: m.weight.data.fill_(1.)
                 if m.bias is not None: m.bias.data.zero_()
 
-    def forward(self, comp, elem_feature, proc_bool, proc_scalar):
+    def forward(self, comp, elem_feature, proc_bool, proc_scalar, phase_scalar):
         mef = torch.sum(comp.squeeze(-1).squeeze(1).unsqueeze(-1) * elem_feature.squeeze(1), dim=1)
         x = torch.cat([comp.reshape(-1, N_ELEM), 
             mef.reshape(-1, N_ELEM_FEAT), 
             proc_bool.reshape(-1, N_PROC_BOOL), 
-            proc_scalar.reshape(-1, N_PROC_SCALAR)], dim=-1)
+            proc_scalar.reshape(-1, N_PROC_SCALAR),
+            phase_scalar.reshape(-1, N_PHASE_SCALAR)], dim=-1)
+        
+        x = self.af(self.bn1(self.fc1(x)))
+        res = x
+        x = self.af(self.bn2(self.fc2(x)))
         x = self.dropout(x)
-        x = self.af(self.fc1(x))
-        x = self.af(self.fc2(x))
-        ym = self.out_ym(self.af(self.fc_ym(x)))
-        ys = self.out_ys(self.af(self.fc_ys(x)))
-        uts = self.out_uts(self.af(self.fc_uts(x)))
-        el = self.out_el(self.af(self.fc_el(x)))
-        x = torch.cat([ym, ys, uts, el], dim=-1)
+        x = self.af(self.bn3(self.fc3(x)) + res)
+
+        ym = self.af(self.bn_ym(self.fc_ym1(x)))
+        ym = self.af(self.fc_ym2(ym))
+        ym = self.out_ym(ym)
+
+        s = self.af(self.bn_s(self.fc_s(x)))
+        s = self.af(self.out_s(s))
+        ys = self.out_ys(s)
+        uts = self.out_uts(s)
+        el = self.out_el(s)
+
+        hv = self.af(self.bn_hv(self.fc_hv1(x)))
+        hv = self.af(self.fc_hv2(hv))
+        hv = self.out_hv(hv)
+        
+        x = torch.cat([ym, ys, uts, el, hv], dim=-1)
         return x
 
 
@@ -270,6 +316,7 @@ if __name__ == '__main__':
     test_input = (torch.ones((_batch_size, 1, N_ELEM, 1)).to(device), \
                  torch.ones((_batch_size, 1, N_ELEM, N_ELEM_FEAT)).to(device), \
                  torch.ones((_batch_size, 1, N_PROC_BOOL, 1)).to(device), \
-                 torch.ones((_batch_size, 1, N_PROC_SCALAR, 1)).to(device),)
+                 torch.ones((_batch_size, 1, N_PROC_SCALAR, 1)).to(device), \
+                 torch.ones((_batch_size, 1, N_PHASE_SCALAR, 1)).to(device))
     model = FCNN_Model().to(device)
     print(model(*test_input).size())

@@ -30,7 +30,7 @@ plt.grid(True, alpha=0.3)
 plt.tight_layout()
 plt.show()'''
 
-
+'''
 import matplotlib.pyplot as plt
 import numpy as np
 import matplotlib.ticker as ticker
@@ -109,6 +109,7 @@ for i in range(3):
 
             file_name = f'model_valid_log/1219_012_123_136_tuned_dataset_scalar_2/model_valid_log_{n_c_list[i]}_CNN_{n_l_list[j]}_DNN_{n_n_list[k]}_nerons.txt'
 '''
+'''
     # for i, (file_name, category) in enumerate(zip(file_names, categories)):
             try:
                 # 读取数据
@@ -151,7 +152,7 @@ for i in range(3):
                 print(f"警告: 文件 {file_name} 未找到，跳过该文件")
             except Exception as e:
                 print(f"处理文件 {file_name} 时出错: {e}")
-
+'''
 '''
 # 调整子图间距
 plt.tight_layout(pad=0.5)
@@ -165,6 +166,92 @@ plt.tight_layout(pad=0.5)
 
 # 显示图表
 plt.show()
+'''
+
+import matplotlib.pyplot as plt
+import numpy as np
+import matplotlib.ticker as ticker
+
+# 设置中文字体（如果需要显示中文）
+plt.rcParams['font.sans-serif'] = ['Arial']# 'SimHei', 
+plt.rcParams['axes.unicode_minus'] = False
+
+# 文件名列表
+file_names = ['model_multi_valid_log_DNN.txt', 'model_multi_valid_log_RNN.txt']
+
+# 类别名称（用于图例）
+categories = ['DNN', 'RNN']
+
+# 创建2x3的子图布局
+fig, axes = plt.subplots(1, 1, figsize=(12, 8))
+
+# axes = axes.flatten()  # 将二维数组展平为一维，便于遍历
+
+# 颜色和线型设置
+# 颜色和线型设置
+colors = ['black', 'blue', 'red', 'green']  # 修改：提供三种颜色
+line_styles = ['-', '-', '-', '-']  # 修改：提供三种线型
+line_labels = ['Training Loss', 'Valid Loss', 'Scalar T L', 'Scalar V L']  # 修改：提供三种标签
+# 遍历每个文件
+file_name = f'model_multi_valid_log_DNN.txt'
+
+    # for i, (file_name, category) in enumerate(zip(file_names, categories)):
+try:
+    # 读取数据
+    data = np.loadtxt(file_name)
+
+    # 提取各列数据
+    epochs = data[:, 0]
+    train_loss = data[:, 1]
+    valid_loss = data[:, 2]
+
+    # 在当前子图中绘制三条曲线
+    ax = axes# [0]
+    ax.set_xscale('log')
+    ax.set_yscale('log')
+    ax.plot(epochs, train_loss, color=colors[0], linestyle=line_styles[0],
+            label=line_labels[0], linewidth=1)
+    ax.plot(epochs, valid_loss, color=colors[1], linestyle=line_styles[1],
+            label=line_labels[1], linewidth=1)
+
+
+
+    # 设置子图标题和标签
+    ax.set_title(f'N', fontsize=14, fontweight='regular')
+    # ax.set_xlabel('Epoch', fontsize=8)
+    # ax.set_ylabel('Loss', fontsize=8)
+    ax.legend(fontsize=10)
+    ax.grid(True, alpha=0.3, which='both', axis='y')
+    
+    # plt.ylim(1e-2,1)
+
+    # 设置坐标轴范围（可根据需要调整）
+    ax.set_xlim(left=10, right=1e3)
+    ax.set_ylim(bottom=0.01, top=1)
+    ax.yaxis.set_major_formatter('{x:.2f}')
+    ax.yaxis.set_minor_formatter('{x:.2f}')
+
+    ax.tick_params(axis='both', which='both', labelsize=10)
+
+except FileNotFoundError:
+    print(f"警告: 文件 {file_name} 未找到，跳过该文件")
+except Exception as e:
+    print(f"处理文件 {file_name} 时出错: {e}")
+'''
+'''
+# 调整子图间距
+plt.tight_layout(pad=0.5)
+
+# 添加总标题
+#plt.suptitle('Training and Validation Loss Comparison Across Categories',
+#             fontsize=16, fontweight='bold', y=0.98)
+
+# 保存图片（可选）
+# plt.savefig('validation_loss_comparison.png', dpi=300, bbox_inches='tight')
+
+# 显示图表
+plt.show()
+
 '''
 import matplotlib.pyplot as plt
 import joblib
