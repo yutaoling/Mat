@@ -1,6 +1,14 @@
+import sys
+import os
+# 添加父目录到路径，以便导入主模块
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from model_env_train import *
 from sklearn.model_selection import KFold
 from torch.utils.data import Subset
+
+# 获取项目根目录
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 def split(data, train_index, test_index):
     comp_data, proc_data, prop_data, elem_feature = data
@@ -12,7 +20,9 @@ def split(data, train_index, test_index):
 def cross_validation(num_training_epochs = 500,
           batch_size = 16,
           k_fold = 10,
-          save_path = 'cross_validation.txt'):
+          save_path = None):
+    if save_path is None:
+        save_path = os.path.join(project_root, 'logs/surrogate/cross_validation.txt')
     ''' util func for training_epoch_num validation '''
     d = load_data()
     d, scalers = fit_transform(d)

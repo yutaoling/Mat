@@ -1,4 +1,3 @@
-'''Ref_2023_npj Comp Mat_A neural network model for high entropy alloy design'''
 import numpy as np
 import torch
 import torch.nn as nn
@@ -244,12 +243,10 @@ class FCNN_Model(nn.Module):
         self.fc_ym2 = nn.Linear(self._n_branch, self._n_branch)
         self.out_ym = nn.Linear(self._n_branch, 1)
 
-        self.fc_s = nn.Linear(self._n_fcnn, self._n_branch)
-        self.bn_s = nn.BatchNorm1d(self._n_branch)
-        self.out_s = nn.Linear(self._n_branch, self._n_branch)
-        self.out_ys = nn.Linear(self._n_branch, 1)
-        self.out_uts = nn.Linear(self._n_branch, 1)
-        self.out_el = nn.Linear(self._n_branch, 1)
+        self.fc_s1 = nn.Linear(self._n_fcnn, self._n_branch)
+        self.bn_s1 = nn.BatchNorm1d(self._n_branch)
+        self.fc_s2 = nn.Linear(self._n_branch, self._n_branch)
+        self.out_s = nn.Linear(self._n_branch, 3)
 
         self.fc_hv1 = nn.Linear(self._n_fcnn, self._n_hv)
         self.bn_hv = nn.BatchNorm1d(self._n_hv)
@@ -295,92 +292,195 @@ class FCNN_Model(nn.Module):
         ym = self.af(self.fc_ym2(ym))
         ym = self.out_ym(ym)
 
-        s = self.af(self.bn_s(self.fc_s(x)))
-        s = self.af(self.out_s(s))
-        ys = self.out_ys(s)
-        uts = self.out_uts(s)
-        el = self.out_el(s)
+        s = self.af(self.bn_s1(self.fc_s1(x)))
+        s = self.af(self.fc_s2(s))
+        s = self.out_s(s)
 
         hv = self.af(self.bn_hv(self.fc_hv1(x)))
         hv = self.af(self.fc_hv2(hv))
         hv = self.out_hv(hv)
         
-        x = torch.cat([ym, ys, uts, el, hv], dim=-1)
+        x = torch.cat([ym, s, hv], dim=-1)
         return x
 
-class FCNN_Attention_Model(nn.Module):
+class Attention_Model(nn.Module):
+    """
+    混合架构 Attention 模型
+    
+    设计思路：
+    1. 基础特征：成分加权平均元素特征（物理先验，符合混合规则）
+    2. 残差特征：Attention 学习元素间交互和修正项
+    3. 融合两种特征，结合工艺参数进行预测
+    
+    改进点：
+    - 修复 BatchNorm 错误，改用 LayerNorm
+    - 成分作为显式权重，不混入 attention 输入
+    - 增强 attention 结构（Query-Key-Value + 多头）
+    - 降低正则化强度
+    """
     def __init__(self):
-        super(FCNN_Attention_Model, self).__init__()
+        super(Attention_Model, self).__init__()
 
-        self.elem_input_dim = N_ELEM_FEAT_P1
-        self.elem_hidden_dim = 64
-
+        # ============ 1. 基础特征：成分加权平均 ============
+        # 对元素特征做简单变换
+        self.base_feat_dim = 32
+        self.base_encoder = nn.Sequential(
+            nn.Linear(N_ELEM_FEAT, self.base_feat_dim),
+            nn.LeakyReLU(0.2),
+        )
+        
+        # ============ 2. Attention 残差特征 ============
+        self.attn_hidden_dim = 64
+        
+        # 元素特征编码器（使用 LayerNorm 替代 BatchNorm）
         self.elem_encoder = nn.Sequential(
-            nn.Linear(self.elem_input_dim, self.elem_hidden_dim),
-            nn.BatchNorm1d(N_ELEM),
+            nn.Linear(N_ELEM_FEAT, self.attn_hidden_dim),
+            nn.LayerNorm(self.attn_hidden_dim),
             nn.LeakyReLU(0.2),
-            nn.Linear(self.elem_hidden_dim, self.elem_hidden_dim),
+            nn.Linear(self.attn_hidden_dim, self.attn_hidden_dim),
+            nn.LayerNorm(self.attn_hidden_dim),
+            nn.LeakyReLU(0.2),
+        )
+        
+        # Query-Key-Value attention（比简单的线性映射更强）
+        self.num_heads = 4
+        self.attention = nn.MultiheadAttention(
+            embed_dim=self.attn_hidden_dim, 
+            num_heads=self.num_heads, 
+            dropout=0.1,
+            batch_first=True
+        )
+        
+        # 成分门控：学习每个元素的重要性调整
+        self.comp_gate = nn.Sequential(
+            nn.Linear(1, 16),
+            nn.LeakyReLU(0.2),
+            nn.Linear(16, 1),
+            nn.Sigmoid(),
+        )
+        
+        # Attention 输出投影
+        self.attn_proj = nn.Sequential(
+            nn.Linear(self.attn_hidden_dim, self.attn_hidden_dim),
+            nn.LayerNorm(self.attn_hidden_dim),
             nn.LeakyReLU(0.2),
         )
 
-        self.attention = nn.Sequential(
-            nn.Linear(self.elem_hidden_dim, 1),
-            nn.Softmax(dim=1),
-        )
-
+        # ============ 3. 特征融合 ============
         self.proc_phase_dim = N_PROC_BOOL + N_PROC_SCALAR + N_PHASE_SCALAR
+        # 融合维度：基础特征 + attention特征 + 工艺参数
+        self.fusion_input_dim = self.base_feat_dim + self.attn_hidden_dim + self.proc_phase_dim
         self.global_hidden_dim = 128
 
         self.fc_main = nn.Sequential(
-            nn.Linear(self.elem_hidden_dim + self.proc_phase_dim, self.global_hidden_dim),
+            nn.Linear(self.fusion_input_dim, self.global_hidden_dim),
             nn.BatchNorm1d(self.global_hidden_dim),
             nn.LeakyReLU(0.2),
-            nn.Dropout(0.4),
+            nn.Dropout(0.2),  # 降低 dropout
+            nn.Linear(self.global_hidden_dim, self.global_hidden_dim),
+            nn.BatchNorm1d(self.global_hidden_dim),
+            nn.LeakyReLU(0.2),
         )
 
+        # ============ 4. 多任务输出头 ============
         self.branch_dim = 64
 
-        self.head_ym = self._make_head(self.branch_dim, 1)
-        self.head_s = self._make_head(self.branch_dim, 2)
-        self.head_el = self._make_head(self.branch_dim, 1)
-        self.head_hv = self._make_head(self.branch_dim, 1)
+        self.head_ym = self._make_head(self.branch_dim, 1)   # 杨氏模量
+        self.head_s = self._make_head(self.branch_dim, 3)    # YS, UTS, El（强度+延展性）
+        self.head_hv = self._make_head(32, 1)                # 硬度（较简单）
 
         self.lr = LEARNING_RATE        
-        self.optimizer = optim.Adam(self.parameters(), lr=self.lr, weight_decay=1e-3)
+        self.optimizer = optim.Adam(self.parameters(), lr=self.lr, weight_decay=1e-4)  # 降低 weight_decay
+        
+        self._init_weights()
 
+    def _init_weights(self):
+        """初始化权重"""
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                init.xavier_uniform_(m.weight)
+                if m.bias is not None:
+                    m.bias.data.zero_()
 
-    def _make_head(self, input_dim, output_dim):
+    def _make_head(self, hidden_dim, output_dim):
         return nn.Sequential(
-            nn.Linear(self.global_hidden_dim, input_dim),
+            nn.Linear(self.global_hidden_dim, hidden_dim),
             nn.LeakyReLU(0.2),
-            nn.Linear(input_dim, output_dim),
+            nn.Linear(hidden_dim, output_dim),
         )
 
     def forward(self, comp, elem_feature, proc_bool, proc_scalar, phase_scalar):
-        comp_sq = comp.squeeze(1)
-        feat_sq = elem_feature.squeeze(1)
-        x_elem = torch.cat([comp_sq, feat_sq], dim=-1)
-
-        elem_emb = self.elem_encoder(x_elem)
-
-        attn_scores = self.attention(elem_emb)
-        alloy_emb = torch.sum(elem_emb * attn_scores, dim=1)
-
-        proc_phase = torch.cat(
-            [proc_bool.reshape(-1, N_PROC_BOOL), 
-            proc_scalar.reshape(-1, N_PROC_SCALAR),
-            phase_scalar.reshape(-1, N_PHASE_SCALAR)], dim=-1)
-        x = torch.cat([alloy_emb, proc_phase], dim=-1)
+        batch_size = comp.size(0)
+        
+        # 提取并调整维度
+        comp_sq = comp.squeeze(-1).squeeze(1)        # (batch, N_ELEM)
+        feat_sq = elem_feature.squeeze(1)            # (batch, N_ELEM, N_ELEM_FEAT)
+        
+        # ============ 1. 基础特征：成分加权平均（物理先验）============
+        # 这符合材料学中的混合规则：合金性质 ≈ Σ(成分 × 元素性质)
+        base_feat = self.base_encoder(feat_sq)       # (batch, N_ELEM, base_feat_dim)
+        comp_weights = comp_sq.unsqueeze(-1)         # (batch, N_ELEM, 1)
+        base_emb = torch.sum(comp_weights * base_feat, dim=1)  # (batch, base_feat_dim)
+        
+        # ============ 2. Attention 残差特征（学习元素间交互）============
+        # 编码元素特征
+        elem_emb = self.elem_encoder(feat_sq)        # (batch, N_ELEM, attn_hidden_dim)
+        
+        # 成分门控：根据成分调整元素重要性
+        # 成分高的元素应该有更大的影响力，但不是简单的线性关系
+        gate = self.comp_gate(comp_sq.unsqueeze(-1)) # (batch, N_ELEM, 1)
+        elem_emb_gated = elem_emb * gate             # (batch, N_ELEM, attn_hidden_dim)
+        
+        # 多头自注意力：学习元素间的交互关系
+        # 例如：Al-V 协同效应、Mo-Fe 相互作用等
+        attn_out, attn_weights = self.attention(
+            elem_emb_gated, elem_emb_gated, elem_emb_gated
+        )  # (batch, N_ELEM, attn_hidden_dim)
+        
+        # 使用成分作为聚合权重（而非 softmax 强制归一化）
+        attn_out = self.attn_proj(attn_out)
+        attn_emb = torch.sum(comp_weights * attn_out, dim=1)  # (batch, attn_hidden_dim)
+        
+        # ============ 3. 特征融合 ============
+        proc_phase = torch.cat([
+            proc_bool.reshape(batch_size, -1), 
+            proc_scalar.reshape(batch_size, -1),
+            phase_scalar.reshape(batch_size, -1)
+        ], dim=-1)  # (batch, proc_phase_dim)
+        
+        # 融合：基础特征 + attention特征 + 工艺参数
+        x = torch.cat([base_emb, attn_emb, proc_phase], dim=-1)
         x = self.fc_main(x)
 
-        ym = self.head_ym(x)
-        s = self.head_s(x)
-        el = self.head_el(x)
-        hv = self.head_hv(x)
+        # ============ 4. 多任务预测 ============
+        ym = self.head_ym(x)    # (batch, 1)
+        s = self.head_s(x)      # (batch, 3) -> YS, UTS, El
+        hv = self.head_hv(x)    # (batch, 1)
 
-        out = torch.cat([ym, s, el, hv], dim=-1)
+        # 输出顺序：YM, YS, UTS, El, HV
+        out = torch.cat([ym, s, hv], dim=-1)
 
         return out
+    
+    def get_attention_weights(self, comp, elem_feature, proc_bool, proc_scalar, phase_scalar):
+        """
+        获取 attention 权重，用于可解释性分析
+        返回每个元素的注意力权重
+        """
+        self.eval()
+        with torch.no_grad():
+            comp_sq = comp.squeeze(-1).squeeze(1)
+            feat_sq = elem_feature.squeeze(1)
+            
+            elem_emb = self.elem_encoder(feat_sq)
+            gate = self.comp_gate(comp_sq.unsqueeze(-1))
+            elem_emb_gated = elem_emb * gate
+            
+            _, attn_weights = self.attention(
+                elem_emb_gated, elem_emb_gated, elem_emb_gated
+            )
+            
+        return attn_weights, gate.squeeze(-1)
 
 
 
@@ -391,5 +491,5 @@ if __name__ == '__main__':
                  torch.ones((_batch_size, 1, N_PROC_BOOL, 1)).to(device), \
                  torch.ones((_batch_size, 1, N_PROC_SCALAR, 1)).to(device), \
                  torch.ones((_batch_size, 1, N_PHASE_SCALAR, 1)).to(device))
-    model = FCNN_Attention_Model().to(device)
+    model = Attention_Model().to(device)
     print(model(*test_input).size())

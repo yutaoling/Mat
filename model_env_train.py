@@ -1,5 +1,6 @@
 import random
 from typing import Callable, Tuple
+import warnings
 import joblib
 import pandas as pd
 import numpy as np
@@ -9,13 +10,13 @@ import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset, Dataset
 
 from sklearn.preprocessing import StandardScaler
-from sklearn.base import TransformerMixin
+from sklearn.base import TransformerMixin, InconsistentVersionWarning
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error
 
 from model_env import ID, COMP, PROC_BOOL, PROC_SCALAR, PHASE_SCALAR, PROP
 from model_env import N_ELEM, N_ELEM_FEAT, N_ELEM_FEAT_P1, N_PROC_BOOL, N_PROC_SCALAR, N_PHASE_SCALAR, N_PROP
-from model_env import CnnDnnModel, CNN_FCNN_MESH_Model, FCNN_Model, FCNN_Attention_Model, device
+from model_env import CnnDnnModel, CNN_FCNN_MESH_Model, FCNN_Model, Attention_Model, device
 from model_env import N_YM, N_YS, N_UTS, N_EL, N_HV, N_PROP_SAMPLE, N_SUM_PROP_SAMPLE
 
 def set_seed(seed):
@@ -212,20 +213,53 @@ class EarlyStopping:
                 print(f"[EarlyStopping] No improvement ({self.counter}/{self.patience})")
             return self.counter >= self.patience
 
-def MaskedLoss(out, prop, mask):
+def MaskedLoss(out, prop, mask, prop_scaler=None):
+    """
+    计算带物理约束的masked损失
+    
+    Args:
+        out: 模型预测值（标准化后的）
+        prop: 真实值（标准化后的）
+        mask: 掩码，指示哪些属性有效
+        prop_scaler: StandardScaler对象，用于反标准化到原始尺度计算物理约束
+    """
     weights = torch.tensor(
-        N_PROP_SAMPLE,
+        [1,1,1,1,1],# N_PROP_SAMPLE,
         dtype=out.dtype,
         device=out.device
     )
     weights = 1.0/weights
     weights = weights / weights.mean()
     weights = weights.view(1, -1)
-    loss = nn.functional.huber_loss(out, prop, reduction='mean')
-    masked_loss = loss * mask
-    masked_weighted_loss = masked_loss * weights
+    
+    # 计算Huber损失（在标准化后的空间）
+    loss = nn.functional.huber_loss(out, prop, reduction='none')
+    loss = loss * mask
+    loss = loss * weights
+    
+
+    prop_scaler_mean = torch.tensor(
+        prop_scaler.mean_, 
+        dtype=out.dtype, 
+        device=out.device
+    ).view(1, -1)
+    prop_scaler_scale = torch.tensor(
+        prop_scaler.scale_, 
+        dtype=out.dtype, 
+        device=out.device
+    ).view(1, -1)
+    
+    out_original = out * prop_scaler_scale + prop_scaler_mean
+    
+    constraint_positive = nn.functional.relu(-out_original) * mask * weights
+    constraint_uts_ys_masked = nn.functional.relu(out_original[:, 1] - out_original[:, 2]) * (mask[:, 1] * mask[:, 2])
+
+    
+    total_loss = loss + 10.0 * constraint_positive
+    
     num_valid = (mask * weights).sum(dim=1).clamp(min=1e-6)
-    mean_weighted_masked_loss = masked_weighted_loss.sum(dim=1)/num_valid
+    mean_weighted_masked_loss = total_loss.sum(dim=1) / num_valid + 10.0 * constraint_uts_ys_masked
+    
     return mean_weighted_masked_loss.mean(), mean_weighted_masked_loss
 
 def train_validate_split(data_tuple, ratio_tuple = (0.95, 0.05)):
@@ -237,7 +271,7 @@ def train_validate_split(data_tuple, ratio_tuple = (0.95, 0.05)):
     return (id_train, comp_train, proc_bool_train, proc_scalar_train, phase_scalar_train, prop_train, elem_feature,), \
             (id_val, comp_val, proc_bool_val, proc_scalar_val, phase_scalar_val, prop_val, elem_feature,)
 
-def validate(model, val_dl):
+def validate(model, val_dl, prop_scaler=None, return_sample_info=False):
     model.to(device)
     model.eval()
     id, comp, proc_bool, proc_scalar, phase_scalar, prop, mask, elem_t = next(iter(val_dl))
@@ -253,8 +287,36 @@ def validate(model, val_dl):
     out = model(comp, elem_t, proc_bool, proc_scalar, phase_scalar).detach()
     prop = prop.reshape(*(out.shape))
     mask = mask.reshape(*(out.shape))
-    loss, _ = MaskedLoss(out, prop, mask)
-    return float(loss.item())
+    loss, llist = MaskedLoss(out, prop, mask, prop_scaler)
+    
+    if not return_sample_info:
+        return float(loss.item())
+    
+    # 找出验证集中loss最大和最小的样本
+    max_sample = None
+    min_sample = None
+    
+    max_loss = llist.max()
+    max_idx = llist.argmax()
+    max_sample = {
+        'loss': max_loss.item(),
+        'predicted': out[max_idx].detach().cpu().numpy(),
+        'actual': prop[max_idx].detach().cpu().numpy(),
+        'mask': mask[max_idx].detach().cpu().numpy(),
+        'id': id[max_idx].detach().cpu().numpy(),
+    }
+    
+    min_loss = llist.min()
+    min_idx = llist.argmin()
+    min_sample = {
+        'loss': min_loss.item(),
+        'predicted': out[min_idx].detach().cpu().numpy(),
+        'actual': prop[min_idx].detach().cpu().numpy(),
+        'mask': mask[min_idx].detach().cpu().numpy(),
+        'id': id[min_idx].detach().cpu().numpy(),
+    }
+    
+    return float(loss.item()), max_sample, min_sample
 
 def Make_Masked_Data(train_data, test_data, rng_seed = seed):
     train_prop = train_data[5]
@@ -283,11 +345,12 @@ def Make_Masked_Data(train_data, test_data, rng_seed = seed):
     return masked_test_data
 
 
-def validate_a_model(num_training_epochs = 2000,
+def validate_a_model(model = Attention_Model(),
+                     num_training_epochs = 2000,
                      batch_size = 16,
                      save_path = None,
                      temp = None,):
-    model = FCNN_Attention_Model().to(device)
+    model = model.to(device) 
     d = load_data()
     d, scalers = fit_transform(d)
     d = filter_activated_data(d, activated_value=1)
@@ -301,13 +364,12 @@ def validate_a_model(num_training_epochs = 2000,
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         model.optimizer, mode='min', factor=0.5, patience=30
     )
+    
+    prop_scaler = scalers[4]
+    
     for epoch in range(num_training_epochs):
         model.train()
         _batch_loss_buffer = []
-        max_loss_epoch = -float('inf')
-        max_sample_epoch = None
-        min_loss_epoch = float('inf')
-        min_sample_epoch = None
         for id, comp, proc_bool, proc_scalar, phase_scalar, prop, mask, elem_t in train_dl:
             id = id.to(device)
             comp = comp.to(device)
@@ -317,30 +379,7 @@ def validate_a_model(num_training_epochs = 2000,
             prop = prop.to(device)
             elem_t = elem_t.to(device)
             out = model(comp, elem_t, proc_bool, proc_scalar, phase_scalar)
-            l, llist = MaskedLoss(out, prop.reshape(*(out.shape)), mask.reshape(*(out.shape)))
-
-            current_max_loss = llist.max()
-            if current_max_loss > max_loss_epoch:
-                max_loss_epoch = current_max_loss.item()
-                max_idx = llist.argmax()
-                max_sample_epoch = {
-                    'loss': current_max_loss.item(),
-                    'predicted': out[max_idx].detach().cpu().numpy(),
-                    'actual': prop[max_idx].detach().cpu().numpy(),
-                    'mask': mask[max_idx].detach().cpu().numpy(),
-                    'id': id[max_idx].detach().cpu().numpy(),
-                }
-            current_min_loss = llist.min()
-            if current_min_loss < min_loss_epoch:
-                min_loss_epoch = current_min_loss.item()
-                min_idx = llist.argmin()
-                min_sample_epoch = {
-                    'loss': current_min_loss.item(),
-                    'predicted': out[min_idx].detach().cpu().numpy(),
-                    'actual': prop[min_idx].detach().cpu().numpy(),
-                    'mask': mask[min_idx].detach().cpu().numpy(),
-                    'id': id[min_idx].detach().cpu().numpy(),
-                }
+            l, _ = MaskedLoss(out, prop.reshape(*(out.shape)), mask.reshape(*(out.shape)), prop_scaler)
 
             model.optimizer.zero_grad()
             l.backward()
@@ -349,25 +388,31 @@ def validate_a_model(num_training_epochs = 2000,
             _batch_loss_buffer.append(l.item())
         
         _batch_mean_loss = np.mean(_batch_loss_buffer)
-        val_loss = validate(model, val_dl)
+        
+        # 在验证集上计算loss并获取最大/最小loss样本
+        if not epoch % 25:
+            val_loss, max_sample_val, min_sample_val = validate(model, val_dl, prop_scaler, return_sample_info=True)
+        else:
+            val_loss = validate(model, val_dl, prop_scaler, return_sample_info=False)
+            
         scheduler.step(val_loss)
         epoch_log_buffer.append((epoch, _batch_mean_loss, val_loss))
         if not epoch % 25:
             print(epoch, _batch_mean_loss, val_loss)
-            if max_sample_epoch is not None:
-                predicted_inv = scalers[4].inverse_transform(max_sample_epoch['predicted'].reshape(1, -1))
-                actual_inv = max_sample_epoch['actual'].copy().reshape(1, -1)
-                actual_inv[actual_inv == -1] = np.nan  # replace -1 with nan
+            if max_sample_val is not None:
+                predicted_inv = scalers[4].inverse_transform(max_sample_val['predicted'].reshape(1, -1))
+                actual_inv = max_sample_val['actual'].copy().reshape(1, -1)
+                actual_inv[actual_inv == -1] = np.nan
                 actual_inv = scalers[4].inverse_transform(actual_inv)
-                print(f"Max loss sample in epoch {epoch}: Number={int(max_sample_epoch['id'].flatten()[0])}, loss={max_sample_epoch['loss']:.6f}")
+                print(f"Max loss sample in val set (epoch {epoch}): Number={int(max_sample_val['id'].flatten()[0])}, loss={max_sample_val['loss']:.6f}")
                 print(f"Predicted (original): {predicted_inv.flatten()}")
                 print(f"Actual (original): {actual_inv.flatten()}")
-            if min_sample_epoch is not None:
-                predicted_inv = scalers[4].inverse_transform(min_sample_epoch['predicted'].reshape(1, -1))
-                actual_inv = min_sample_epoch['actual'].copy().reshape(1, -1)
-                actual_inv[actual_inv == -1] = np.nan  # replace -1 with nan
+            if min_sample_val is not None:
+                predicted_inv = scalers[4].inverse_transform(min_sample_val['predicted'].reshape(1, -1))
+                actual_inv = min_sample_val['actual'].copy().reshape(1, -1)
+                actual_inv[actual_inv == -1] = np.nan
                 actual_inv = scalers[4].inverse_transform(actual_inv)
-                print(f"Min loss sample in epoch {epoch}: Number={int(min_sample_epoch['id'].flatten()[0])}, loss={min_sample_epoch['loss']:.6f}")
+                print(f"Min loss sample in val set (epoch {epoch}): Number={int(min_sample_val['id'].flatten()[0])}, loss={min_sample_val['loss']:.6f}")
                 print(f"Predicted (original): {predicted_inv.flatten()}")
                 print(f"Actual (original): {actual_inv.flatten()}")
         # if early_stopper.step(val_loss, model):
@@ -384,7 +429,7 @@ def validate_a_model(num_training_epochs = 2000,
     
     return model, d, scalers
 
-def train_a_model(model = FCNN_Attention_Model,
+def train_a_model(model = Attention_Model(),
                     num_training_epochs = 1000,
                     batch_size = 16,
                     save_path = None,):
@@ -398,12 +443,15 @@ def train_a_model(model = FCNN_Attention_Model,
     train_d = d
     train_dl = get_dataloader(train_d, batch_size)
     epoch_log_buffer = []
+    
+    prop_scaler = scalers[4]
+    
     for epoch in range(num_training_epochs):
         model.train()
         _batch_loss_buffer = []
         for id, comp, proc_bool, proc_scalar, phase_scalar, prop, mask, elem_t in train_dl:
             out = model(comp, elem_t, proc_bool, proc_scalar, phase_scalar)
-            l, _ = MaskedLoss(out, prop.reshape(*(out.shape)), mask.reshape(*(out.shape)))
+            l, _ = MaskedLoss(out, prop.reshape(*(out.shape)), mask.reshape(*(out.shape)), prop_scaler)
 
             model.optimizer.zero_grad()
             l.backward()
@@ -426,7 +474,7 @@ def train_a_model(model = FCNN_Attention_Model,
     
     return model, d, scalers
 
-def get_model(model = FCNN_Attention_Model,
+def get_model(model = Attention_Model(),
               default_model_pth = 'model.pth',
               default_data_pth = 'data.pth',
               resume = False,
@@ -435,7 +483,11 @@ def get_model(model = FCNN_Attention_Model,
     if resume:
         model = model.to(device)
         model.load_state_dict(torch.load(default_model_pth, map_location=device))
-        d, scalers = joblib.load(default_data_pth)
+        # 抑制 sklearn 版本不匹配警告（如果功能正常，可以忽略）
+        with warnings.catch_warnings():
+            # 过滤 sklearn InconsistentVersionWarning
+            warnings.filterwarnings('ignore', category=InconsistentVersionWarning)
+            d, scalers = joblib.load(default_data_pth)
     else:
         model, d, scalers=train_a_model(model = model, save_path=save_path, num_training_epochs=2000)
         torch.save(model.state_dict(), default_model_pth)
@@ -444,12 +496,17 @@ def get_model(model = FCNN_Attention_Model,
     return model, d, scalers
 
 if __name__ == '__main__':
-    # get_model(f'model_multi_DNN.pth',f'data_multi.pth',resume=False,save_path='model_multi_DNN_train_err_log.txt')
+    model = FCNN_Model()
+    # get_model(model, f'models/surrogate/model_multi.pth',f'models/surrogate/data_multi.pth',resume=False,save_path='logs/surrogate/model_multi_train.txt')
     '''
     for n_c in [1, 2]:
         for n_n in [32, 64]:
             for n_l in [1, 2, 3]:
                 print(f'Training model with {n_c} CNN layer(s), {n_l} DNN layer(s), {n_n} neurons per DNN layer')
-                validate_a_model(num_training_epochs=1000, save_path=f'model_valid_log_{n_c}_CNN_{n_l}_DNN_{n_n}_nerons.txt', temp=[n_c,n_l,n_n])
+                validate_a_model(num_training_epochs=1000, save_path=f'logs/validation/model_valid_log_{n_c}_CNN_{n_l}_DNN_{n_n}_nerons.txt', temp=[n_c,n_l,n_n])
     '''
-    validate_a_model(num_training_epochs=1000, batch_size=32, save_path='model_multi_valid_log_DNN.txt')
+    # validate_a_model(model = model, num_training_epochs=1000, batch_size=32, save_path='logs/surrogate/log_FCNN.txt')
+    model = Attention_Model()
+    get_model(model, f'models/surrogate/model_Attention.pth',f'models/surrogate/data_Attention.pth',resume=False,save_path='logs/surrogate/model_Attention_train.txt')
+    
+    # validate_a_model(model = model, num_training_epochs=1000, batch_size=32, save_path='logs/surrogate/log_Attention.txt')
