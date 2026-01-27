@@ -383,7 +383,7 @@ def get_model(model = Attention_Model(),
     if resume:
         model.load_state_dict(torch.load(model_path, map_location=device))
 
-    model=train_a_model(model = model, train_d = train_d, val_d = val_d, scalers = scalers, save_path=save_path, num_training_epochs=1)
+    model=train_a_model(model = model, train_d = train_d, val_d = val_d, scalers = scalers, save_path=save_path, num_training_epochs=2000)
     torch.save(model.state_dict(), model_path)
     
     return model, train_d, val_d, scalers
