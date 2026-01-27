@@ -12,15 +12,6 @@ from typing import List
 from copy import deepcopy
 import uuid
 import warnings
-# 可选导入 UtilityFunction（仅在 enable_ei=True 时使用）
-try:
-    from bayes_opt import UtilityFunction
-    UTILITY_FUNCTION_AVAILABLE = True
-except ImportError:
-    UtilityFunction = None
-    UTILITY_FUNCTION_AVAILABLE = False
-    if __name__ != '__main__':
-        warnings.warn("UtilityFunction from bayes_opt is not available. EI functionality will be disabled.")
 import joblib
 import numpy as np
 from sklearn.gaussian_process import GaussianProcessRegressor
@@ -886,7 +877,6 @@ class State:
 class Environment:
     def __init__(self, 
                  init_N = 50, 
-                 enable_ei: bool = False,
                  random_seed = None):
         self.init_world_model()
 
@@ -911,7 +901,6 @@ class Environment:
         self.cached_surrogate_pred_dict = dict()
 
         self.init_N = init_N
-        self.enable_ei = enable_ei
         self.init_surrogate(self.init_N, random_seed)
     
     def init_world_model(self,):
@@ -1284,14 +1273,6 @@ class Environment:
             warnings.simplefilter("ignore")
             self.surrogate.fit(train_x, train_y)
 
-        if self.enable_ei:
-            if not UTILITY_FUNCTION_AVAILABLE or UtilityFunction is None:
-                raise ImportError(
-                    "UtilityFunction from bayes_opt is required when enable_ei=True. "
-                    "Please install a compatible version of bayes_opt or set enable_ei=False."
-                )
-            self.ei_acqf = UtilityFunction(kind = "ei", xi = 0.0)
-
         ''' reset cached prediction '''
         self.cached_surrogate_pred_dict = dict()
 
@@ -1299,10 +1280,7 @@ class Environment:
         _x_key = State.encode_key(x)
         if _x_key not in self.cached_surrogate_pred_dict:
             x = np.atleast_2d(x).reshape(1, -1)
-            if not self.enable_ei:
-                pred_val = self.surrogate.predict(x)[0]
-            else:
-                pred_val = _ei = self.ei_acqf.utility(x, gp = self.surrogate, y_max = self.best_score)
+            pred_val = self.surrogate.predict(x)[0]
             self.cached_surrogate_pred_dict[_x_key] = pred_val
             return pred_val
         else:

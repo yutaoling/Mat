@@ -1,8 +1,6 @@
 from time import sleep
 import os
 from typing import Tuple
-import uuid
-import gpytorch
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

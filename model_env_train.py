@@ -1,3 +1,4 @@
+import os
 import random
 from typing import Callable, Tuple
 import warnings
@@ -14,10 +15,7 @@ from sklearn.base import TransformerMixin, InconsistentVersionWarning
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error
 
-from model_env import ID, COMP, PROC_BOOL, PROC_SCALAR, PHASE_SCALAR, PROP
-from model_env import N_ELEM, N_ELEM_FEAT, N_ELEM_FEAT_P1, N_PROC_BOOL, N_PROC_SCALAR, N_PHASE_SCALAR, N_PROP
-from model_env import CnnDnnModel, CNN_FCNN_MESH_Model, FCNN_Model, Attention_Model, device
-from model_env import N_YM, N_YS, N_UTS, N_EL, N_HV, N_PROP_SAMPLE, N_SUM_PROP_SAMPLE
+from model_env import *
 
 def set_seed(seed):
     random.seed(seed)
@@ -36,8 +34,7 @@ seeds = np.random.randint(0, 9999, (9999, ))
 
 def load_data():
     data = pd.read_excel('data/Ti_Alloy_Dataset.xlsx', sheet_name=0)
-    # data = data[data['Activated'] == 1]
-
+    
     id_labels = ID
     comp_labels = COMP
     proc_bool_labels=PROC_BOOL
@@ -155,42 +152,25 @@ def get_dataloader(data_tuple, batch_size = 16, augment = False) -> DataLoader:
     id_data, comp_data, proc_bool_data, proc_scalar_data, phase_scalar_data, prop_data, elem_feature = data_tuple
     dataset = CustomDataset((id_data, comp_data, proc_bool_data, proc_scalar_data, phase_scalar_data, prop_data,), None, augment=augment)
 
-    _elem_feature_tensor = torch.tensor(elem_feature, dtype=torch.float32).reshape(1, 1, *(elem_feature.shape))
+    _elem_feature_base = torch.tensor(elem_feature, dtype=torch.float32, device=device).reshape(1, 1, *elem_feature.shape)
 
     def _collate_fn(batch):
         id, comp, proc_bool, proc_scalar, phase_scalar, prop, mask = zip(*batch)
-        id = torch.tensor(np.vstack(id), dtype=torch.float32)
-        id = id.reshape(-1, 1, id.shape[-1], 1)
-        comp = torch.tensor(np.vstack(comp), dtype=torch.float32)
-        comp = comp.reshape(-1, 1, comp.shape[-1], 1)
-        proc_bool = torch.tensor(np.vstack(proc_bool), dtype=torch.float32)
-        proc_bool = proc_bool.reshape(-1, 1, proc_bool.shape[-1], 1)
-        proc_scalar = torch.tensor(np.vstack(proc_scalar), dtype=torch.float32)
-        proc_scalar = proc_scalar.reshape(-1, 1, proc_scalar.shape[-1], 1)
-        phase_scalar = torch.tensor(np.vstack(phase_scalar), dtype=torch.float32)
-        phase_scalar = phase_scalar.reshape(-1, 1, phase_scalar.shape[-1], 1)
-        prop = torch.tensor(np.vstack(prop), dtype=torch.float32)
-        prop = prop.reshape(-1, 1, prop.shape[-1], 1)
-        mask = torch.tensor(np.vstack(mask), dtype=torch.float32)
-        mask = mask.reshape(-1, 1, prop.shape[-1], 1)
+        bs = len(comp)
+        
+        id_t = torch.tensor(np.vstack(id), dtype=torch.float32, device=device).reshape(bs, 1, -1, 1)
+        comp_t = torch.tensor(np.vstack(comp), dtype=torch.float32, device=device).reshape(bs, 1, -1, 1)
+        proc_bool_t = torch.tensor(np.vstack(proc_bool), dtype=torch.float32, device=device).reshape(bs, 1, -1, 1)
+        proc_scalar_t = torch.tensor(np.vstack(proc_scalar), dtype=torch.float32, device=device).reshape(bs, 1, -1, 1)
+        phase_scalar_t = torch.tensor(np.vstack(phase_scalar), dtype=torch.float32, device=device).reshape(bs, 1, -1, 1)
+        prop_t = torch.tensor(np.vstack(prop), dtype=torch.float32, device=device).reshape(bs, 1, -1, 1)
+        mask_t = torch.tensor(np.vstack(mask), dtype=torch.float32, device=device).reshape(bs, 1, -1, 1)
+        
+        elem_t = _elem_feature_base.expand(bs, 1, *elem_feature.shape)
 
-        _elem_feature_tensor_clone = _elem_feature_tensor.expand(len(comp), 1, *(elem_feature.shape)).clone().detach()
-        _elem_feature_tensor_clone.requires_grad_(False)
+        return id_t, comp_t, proc_bool_t, proc_scalar_t, phase_scalar_t, prop_t, mask_t, elem_t
 
-        id=id.to(device)
-        comp=comp.to(device)
-        proc_bool=proc_bool.to(device)
-        proc_scalar=proc_scalar.to(device)
-        phase_scalar=phase_scalar.to(device)
-        prop=prop.to(device)
-        mask=mask.to(device)
-        _elem_feature_tensor_clone=_elem_feature_tensor_clone.to(device)
-
-        return id, comp, proc_bool, proc_scalar, phase_scalar, prop, mask, _elem_feature_tensor_clone
-
-    should_shuffle = augment
-
-    return DataLoader(dataset, batch_size = batch_size, collate_fn = _collate_fn, shuffle = should_shuffle)
+    return DataLoader(dataset, batch_size=batch_size, collate_fn=_collate_fn, shuffle=augment)
 
 class EarlyStopping:
     def __init__(self, patience=100, min_delta=1e-4, verbose=True):
@@ -213,54 +193,39 @@ class EarlyStopping:
                 print(f"[EarlyStopping] No improvement ({self.counter}/{self.patience})")
             return self.counter >= self.patience
 
+_cached_loss_tensors = {}
+
+def _get_cached_tensors(dtype, device, prop_scaler):
+    key = (dtype, device)
+    if key not in _cached_loss_tensors or _cached_loss_tensors[key].get('scaler_id') != id(prop_scaler):
+        weights = torch.ones(5, dtype=dtype, device=device).view(1, -1)
+        scaler_mean = torch.tensor(prop_scaler.mean_, dtype=dtype, device=device).view(1, -1)
+        scaler_scale = torch.tensor(prop_scaler.scale_, dtype=dtype, device=device).view(1, -1)
+        _cached_loss_tensors[key] = {
+            'weights': weights,
+            'scaler_mean': scaler_mean,
+            'scaler_scale': scaler_scale,
+            'scaler_id': id(prop_scaler)
+        }
+    return _cached_loss_tensors[key]
+
 def MaskedLoss(out, prop, mask, prop_scaler=None):
-    """
-    计算带物理约束的masked损失
+    cached = _get_cached_tensors(out.dtype, out.device, prop_scaler)
+    weights = cached['weights']
+    scaler_mean = cached['scaler_mean']
+    scaler_scale = cached['scaler_scale']
     
-    Args:
-        out: 模型预测值（标准化后的）
-        prop: 真实值（标准化后的）
-        mask: 掩码，指示哪些属性有效
-        prop_scaler: StandardScaler对象，用于反标准化到原始尺度计算物理约束
-    """
-    weights = torch.tensor(
-        [1,1,1,1,1],# N_PROP_SAMPLE,
-        dtype=out.dtype,
-        device=out.device
-    )
-    weights = 1.0/weights
-    weights = weights / weights.mean()
-    weights = weights.view(1, -1)
+    loss = nn.functional.huber_loss(out, prop, reduction='none') * mask * weights
     
-    # 计算Huber损失（在标准化后的空间）
-    loss = nn.functional.huber_loss(out, prop, reduction='none')
-    loss = loss * mask
-    loss = loss * weights
-    
-
-    prop_scaler_mean = torch.tensor(
-        prop_scaler.mean_, 
-        dtype=out.dtype, 
-        device=out.device
-    ).view(1, -1)
-    prop_scaler_scale = torch.tensor(
-        prop_scaler.scale_, 
-        dtype=out.dtype, 
-        device=out.device
-    ).view(1, -1)
-    
-    out_original = out * prop_scaler_scale + prop_scaler_mean
-    
+    out_original = out * scaler_scale + scaler_mean
     constraint_positive = nn.functional.relu(-out_original) * mask * weights
-    constraint_uts_ys_masked = nn.functional.relu(out_original[:, 1] - out_original[:, 2]) * (mask[:, 1] * mask[:, 2])
-
+    constraint_uts_ys = nn.functional.relu(out_original[:, 1] - out_original[:, 2]) * (mask[:, 1] * mask[:, 2])
     
     total_loss = loss + 10.0 * constraint_positive
-    
     num_valid = (mask * weights).sum(dim=1).clamp(min=1e-6)
-    mean_weighted_masked_loss = total_loss.sum(dim=1) / num_valid + 10.0 * constraint_uts_ys_masked
+    mean_loss = total_loss.sum(dim=1) / num_valid + 10.0 * constraint_uts_ys
     
-    return mean_weighted_masked_loss.mean(), mean_weighted_masked_loss
+    return mean_loss.mean(), mean_loss
 
 def train_validate_split(data_tuple, ratio_tuple = (0.95, 0.05)):
     _random_seed = next(iter(seeds))
@@ -272,19 +237,10 @@ def train_validate_split(data_tuple, ratio_tuple = (0.95, 0.05)):
             (id_val, comp_val, proc_bool_val, proc_scalar_val, phase_scalar_val, prop_val, elem_feature,)
 
 def validate(model, val_dl, prop_scaler=None, return_sample_info=False):
-    model.to(device)
     model.eval()
     id, comp, proc_bool, proc_scalar, phase_scalar, prop, mask, elem_t = next(iter(val_dl))
-
-    id = id.to(device)
-    comp = comp.to(device)
-    proc_bool = proc_bool.to(device)
-    proc_scalar = proc_scalar.to(device)
-    phase_scalar = phase_scalar.to(device)
-    prop = prop.to(device)
-    mask = mask.to(device)
-    elem_t = elem_t.to(device)
-    out = model(comp, elem_t, proc_bool, proc_scalar, phase_scalar).detach()
+    with torch.no_grad():
+        out = model(comp, elem_t, proc_bool, proc_scalar, phase_scalar)
     prop = prop.reshape(*(out.shape))
     mask = mask.reshape(*(out.shape))
     loss, llist = MaskedLoss(out, prop, mask, prop_scaler)
@@ -292,7 +248,6 @@ def validate(model, val_dl, prop_scaler=None, return_sample_info=False):
     if not return_sample_info:
         return float(loss.item())
     
-    # 找出验证集中loss最大和最小的样本
     max_sample = None
     min_sample = None
     
@@ -344,40 +299,26 @@ def Make_Masked_Data(train_data, test_data, rng_seed = seed):
     masked_test_data = (test_data[0], test_data[1], test_data[2], test_data[3], test_data[4], test_prop_masked, test_data[6])
     return masked_test_data
 
-
-def validate_a_model(model = Attention_Model(),
-                     num_training_epochs = 2000,
-                     batch_size = 16,
-                     save_path = None,
-                     temp = None,):
-    model = model.to(device) 
-    d = load_data()
-    d, scalers = fit_transform(d)
-    d = filter_activated_data(d, activated_value=1)
-    # test_data, scalers = fit_transform(test_data, scalers=scalers)
-    # d, scalers = joblib.load('data_multi.pth')
-    train_d, val_d = train_validate_split(d, (0.9, 0.1))
-    train_dl = get_dataloader(train_d, batch_size, augment=True)
+def train_a_model(model = Attention_Model(),
+                    train_d = None,
+                    val_d = None,
+                    scalers = None,
+                    num_training_epochs = 1000,
+                    batch_size = 16,
+                    save_path = None,):
+    train_dl = get_dataloader(train_d, batch_size)
     val_dl = get_dataloader(val_d, batch_size, augment=False)
     epoch_log_buffer = []
     # early_stopper = EarlyStopping(patience=150,min_delta=1e-4,verbose=True)
+    prop_scaler = scalers[4]
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         model.optimizer, mode='min', factor=0.5, patience=30
     )
-    
-    prop_scaler = scalers[4]
     
     for epoch in range(num_training_epochs):
         model.train()
         _batch_loss_buffer = []
         for id, comp, proc_bool, proc_scalar, phase_scalar, prop, mask, elem_t in train_dl:
-            id = id.to(device)
-            comp = comp.to(device)
-            proc_bool = proc_bool.to(device)
-            proc_scalar = proc_scalar.to(device)
-            phase_scalar = phase_scalar.to(device)
-            prop = prop.to(device)
-            elem_t = elem_t.to(device)
             out = model(comp, elem_t, proc_bool, proc_scalar, phase_scalar)
             l, _ = MaskedLoss(out, prop.reshape(*(out.shape)), mask.reshape(*(out.shape)), prop_scaler)
 
@@ -388,13 +329,8 @@ def validate_a_model(model = Attention_Model(),
             _batch_loss_buffer.append(l.item())
         
         _batch_mean_loss = np.mean(_batch_loss_buffer)
+        val_loss, max_sample_val, min_sample_val = validate(model, val_dl, prop_scaler, return_sample_info=True)
         
-        # 在验证集上计算loss并获取最大/最小loss样本
-        if not epoch % 25:
-            val_loss, max_sample_val, min_sample_val = validate(model, val_dl, prop_scaler, return_sample_info=True)
-        else:
-            val_loss = validate(model, val_dl, prop_scaler, return_sample_info=False)
-            
         scheduler.step(val_loss)
         epoch_log_buffer.append((epoch, _batch_mean_loss, val_loss))
         if not epoch % 25:
@@ -415,6 +351,7 @@ def validate_a_model(model = Attention_Model(),
                 print(f"Min loss sample in val set (epoch {epoch}): Number={int(min_sample_val['id'].flatten()[0])}, loss={min_sample_val['loss']:.6f}")
                 print(f"Predicted (original): {predicted_inv.flatten()}")
                 print(f"Actual (original): {actual_inv.flatten()}")
+
         # if early_stopper.step(val_loss, model):
         #     print(f"[EarlyStopping] Stop at epoch {epoch}")
         #     break
@@ -427,86 +364,48 @@ def validate_a_model(model = Attention_Model(),
             delimiter = '\t',
         )
     
-    return model, d, scalers
-
-def train_a_model(model = Attention_Model(),
-                    num_training_epochs = 1000,
-                    batch_size = 16,
-                    save_path = None,):
-    ''' train a model '''
-    model = model.to(device)
-    d = load_data()
-    d, scalers = fit_transform(d)
-    d = filter_activated_data(d, activated_value=1)
-    # d, scalers = joblib.load('data_multi.pth')
-
-    train_d = d
-    train_dl = get_dataloader(train_d, batch_size)
-    epoch_log_buffer = []
-    
-    prop_scaler = scalers[4]
-    
-    for epoch in range(num_training_epochs):
-        model.train()
-        _batch_loss_buffer = []
-        for id, comp, proc_bool, proc_scalar, phase_scalar, prop, mask, elem_t in train_dl:
-            out = model(comp, elem_t, proc_bool, proc_scalar, phase_scalar)
-            l, _ = MaskedLoss(out, prop.reshape(*(out.shape)), mask.reshape(*(out.shape)), prop_scaler)
-
-            model.optimizer.zero_grad()
-            l.backward()
-            model.optimizer.step()
-            
-            _batch_loss_buffer.append(l.item())
-        
-        _batch_mean_loss = np.mean(_batch_loss_buffer)
-        epoch_log_buffer.append((epoch, _batch_mean_loss))
-        if epoch % 25 == 0: 
-            print(epoch, _batch_mean_loss)
-    
-    if save_path:
-        np.savetxt(
-            save_path,
-            np.array(epoch_log_buffer),
-            fmt = '%.6f',
-            delimiter = '\t',
-        )
-    
-    return model, d, scalers
+    return model
 
 def get_model(model = Attention_Model(),
-              default_model_pth = 'model.pth',
-              default_data_pth = 'data.pth',
+              model_path = 'model.pth',
+              data_path = 'data.pth',
               resume = False,
               save_path=None,):
+    if not os.path.exists(data_path):
+        d = load_data()
+        d, scalers = fit_transform(d)
+        d = filter_activated_data(d, activated_value=1)
+        train_d, val_d = train_validate_split(d, (0.9, 0.1))
+        joblib.dump((train_d, val_d, scalers), data_path)
+    else:
+        train_d, val_d, scalers = joblib.load(data_path)
 
     if resume:
-        model = model.to(device)
-        model.load_state_dict(torch.load(default_model_pth, map_location=device))
-        # 抑制 sklearn 版本不匹配警告（如果功能正常，可以忽略）
-        with warnings.catch_warnings():
-            # 过滤 sklearn InconsistentVersionWarning
-            warnings.filterwarnings('ignore', category=InconsistentVersionWarning)
-            d, scalers = joblib.load(default_data_pth)
-    else:
-        model, d, scalers=train_a_model(model = model, save_path=save_path, num_training_epochs=2000)
-        torch.save(model.state_dict(), default_model_pth)
-        joblib.dump((d, scalers), default_data_pth)
+        model.load_state_dict(torch.load(model_path, map_location=device))
+
+    model=train_a_model(model = model, train_d = train_d, val_d = val_d, scalers = scalers, save_path=save_path, num_training_epochs=1)
+    torch.save(model.state_dict(), model_path)
     
-    return model, d, scalers
+    return model, train_d, val_d, scalers
 
 if __name__ == '__main__':
-    model = FCNN_Model()
-    # get_model(model, f'models/surrogate/model_multi.pth',f'models/surrogate/data_multi.pth',resume=False,save_path='logs/surrogate/model_multi_train.txt')
-    '''
-    for n_c in [1, 2]:
-        for n_n in [32, 64]:
-            for n_l in [1, 2, 3]:
-                print(f'Training model with {n_c} CNN layer(s), {n_l} DNN layer(s), {n_n} neurons per DNN layer')
-                validate_a_model(num_training_epochs=1000, save_path=f'logs/validation/model_valid_log_{n_c}_CNN_{n_l}_DNN_{n_n}_nerons.txt', temp=[n_c,n_l,n_n])
-    '''
-    # validate_a_model(model = model, num_training_epochs=1000, batch_size=32, save_path='logs/surrogate/log_FCNN.txt')
-    model = Attention_Model()
-    get_model(model, f'models/surrogate/model_Attention.pth',f'models/surrogate/data_Attention.pth',resume=False,save_path='logs/surrogate/model_Attention_train.txt')
+    model = Baseline_Model().to(device)
+    get_model(model, f'models/surrogate/model_Baseline.pth',f'models/surrogate/data.pth',resume=False,save_path='logs/surrogate/train_Baseline.txt')
+
+    model = Baseline_Comp_Model().to(device)
+    get_model(model, f'models/surrogate/model_Baseline_C.pth',f'models/surrogate/data.pth',resume=False,save_path='logs/surrogate/train_Baseline_C.txt')
+
+    model = Baseline_CompPhase_Model().to(device)
+    get_model(model, f'models/surrogate/model_Baseline_CP.pth',f'models/surrogate/data.pth',resume=False,save_path='logs/surrogate/train_Baseline_CP.txt')
+
+    model = FCNN_Model().to(device)
+    get_model(model, f'models/surrogate/model_FCNN.pth',f'models/surrogate/data.pth',resume=False,save_path='logs/surrogate/train_FCNN.txt')
     
-    # validate_a_model(model = model, num_training_epochs=1000, batch_size=32, save_path='logs/surrogate/log_Attention.txt')
+    model = Attention_Model().to(device)
+    get_model(model, f'models/surrogate/model_Attention.pth',f'models/surrogate/data.pth',resume=False,save_path='logs/surrogate/train_Attention.txt')
+
+    model = CNN_Branched_Model().to(device)
+    get_model(model, f'models/surrogate/model_CNN.pth',f'models/surrogate/data.pth',resume=False,save_path='logs/surrogate/train_CNN.txt')
+
+    model = FCNN_NoElemFeat_Model().to(device)
+    get_model(model, f'models/surrogate/model_FCNN_NEF.pth',f'models/surrogate/data.pth',resume=False,save_path='logs/surrogate/train_FCNN_NEF.txt')

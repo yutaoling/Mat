@@ -7,6 +7,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import matplotlib.pyplot as plt
 import numpy as np
 import joblib
+from model_env_train import *
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -21,17 +22,20 @@ def setup_plot_style():
 def plot_training_errors(files_and_labels: dict, save_path: str = None):
     """绘制多个训练误差日志的对比图"""
     setup_plot_style()
-    plt.figure(figsize=(12, 8))
-    
-    for file_path, label in files_and_labels.items():
+    plt.figure(figsize=(6, 4))
+    colors = ['red', 'blue', 'gray', 'green', 'black', 'black', 'red']
+    line_styles = ['-', '-', '-', '-', '-', '--', '--']
+    for i, (file_path, label) in enumerate(files_and_labels.items()):
         try:
             data = np.loadtxt(file_path)
-            plt.plot(data[:, 0], data[:, 1], label=label, linewidth=2)
+            plt.plot(data[:, 0], data[:, 1], label=label, linewidth=1, color=colors[i], linestyle=line_styles[i])
         except Exception:
             pass
     
     plt.xlabel('Epoch/Step', fontsize=12)
     plt.ylabel('Error/Loss', fontsize=12)
+    plt.ylim(bottom=0, top=1)
+    plt.xlim(left=0)
     plt.title('Training Error Comparison', fontsize=14, fontweight='bold')
     plt.legend(fontsize=10)
     plt.grid(True, alpha=0.3)
@@ -141,9 +145,12 @@ def plot_rl_best_scores(pkl_files: list, labels: list = None, save_path: str = N
     plt.figure(figsize=(12, 8))
     all_final_scores = []
     
-    for i, (pkl_file, label) in enumerate(zip(pkl_files, labels)):
+    for i, (data_file, label) in enumerate(zip(pkl_files, labels)):
         try:
-            bsf_list = joblib.load(pkl_file)
+            if data_file.endswith('.pkl'):
+                bsf_list = joblib.load(data_file)
+            else:
+                bsf_list = np.loadtxt(data_file)
             style = line_styles[i % len(line_styles)]
             plt.plot(range(len(bsf_list)), bsf_list, color=colors[i], linestyle=style,
                      label=f'{label} (final: {bsf_list[-1]:.4f})', linewidth=2, alpha=0.8)
@@ -171,8 +178,6 @@ def plot_rl_best_scores(pkl_files: list, labels: list = None, save_path: str = N
 def plot_prediction_scatter(model=None, save_path: str = None, prop_names: list = None):
     """绘制验证集上真实值-预测值对比的对角线图"""
     import torch
-    from model_env_train import load_data, fit_transform, filter_activated_data, train_validate_split, get_dataloader
-    from model_env import Attention_Model, PROP, device
     from sklearn.metrics import r2_score, mean_absolute_error, mean_squared_error
     
     setup_plot_style()
@@ -180,14 +185,11 @@ def plot_prediction_scatter(model=None, save_path: str = None, prop_names: list 
     if prop_names is None:
         prop_names = PROP
     
-    d = load_data()
-    d, scalers = fit_transform(d)
-    d = filter_activated_data(d, activated_value=1)
-    _, val_d = train_validate_split(d, (0.9, 0.1))
+    train_d, val_d, scalers = joblib.load('models/surrogate/data.pth')
     
     if model is None:
-        model_path = os.path.join(PROJECT_ROOT, 'models/surrogate/model_Attention.pth')
-        model = Attention_Model()
+        model_path = os.path.join(PROJECT_ROOT, 'models/surrogate/model_FCNN_NEF.pth')
+        model = FCNN_NoElemFeat_Model()
         model.load_state_dict(torch.load(model_path, map_location=device, weights_only=True))
     
     model = model.to(device)
@@ -251,10 +253,10 @@ def plot_prediction_scatter(model=None, save_path: str = None, prop_names: list 
         ax.text(0.05, 0.95, stats_text, transform=ax.transAxes, fontsize=9,
                verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
         
-        ax.set_xlabel(f'Actual {prop_name} ({unit})', fontsize=11)
-        ax.set_ylabel(f'Predicted {prop_name} ({unit})', fontsize=11)
-        ax.set_title(f'{prop_name}', fontsize=14, fontweight='bold')
-        ax.legend(loc='lower right', fontsize=8)
+        ax.set_xlabel(f'Actual {prop_name} ({unit})', fontsize=10)
+        ax.set_ylabel(f'Predicted {prop_name} ({unit})', fontsize=10)
+        ax.set_title(f'{prop_name}', fontsize=12, fontweight='bold')
+        ax.legend(loc='lower right', fontsize=6)
         ax.set_xlim(line_range)
         ax.set_ylim(line_range)
         ax.set_aspect('equal')
@@ -263,7 +265,7 @@ def plot_prediction_scatter(model=None, save_path: str = None, prop_names: list 
     for i in range(len(prop_names), len(axes)):
         axes[i].set_visible(False)
     
-    plt.suptitle('Validation Set: Actual vs Predicted', fontsize=16, fontweight='bold')
+    plt.suptitle('Validation Set: Actual vs Predicted', fontsize=14, fontweight='bold')
     plt.tight_layout()
     
     if save_path:
@@ -287,7 +289,13 @@ def main():
         if choice == '0':
             break
         elif choice == '1':
-            plot_training_errors({'log/dar_train_err_log.txt': 'DAR'})
+            plot_training_errors({'logs/surrogate/train_Baseline.txt': 'Baseline',
+                                  'logs/surrogate/train_Baseline_C.txt': 'Baseline_C',
+                                  'logs/surrogate/train_Baseline_CP.txt': 'Baseline_CP',
+                                  'logs/surrogate/train_FCNN.txt': 'FCNN',
+                                  'logs/surrogate/train_FCNN_NEF.txt': 'FCNN_NEF',
+                                  'logs/surrogate/train_CNN.txt': 'CNN',
+                                  'logs/surrogate/train_Attention.txt': 'Attention',})
         elif choice == '2':
             plot_hyperparameter_grid(os.path.join(PROJECT_ROOT, 'model_valid_log/1219_012_123_136_tuned_dataset_2'))
         elif choice == '3':
@@ -297,13 +305,13 @@ def main():
                 ['FCNN', 'FCNN + Attention'])
         elif choice == '4':
             results_dir = os.path.join(PROJECT_ROOT, 'results')
-            pkl_files = [os.path.join(results_dir, f) for f in os.listdir(results_dir) 
-                        if f.endswith('.pkl') and 'rl_single_agent' in f][:5]
-            if pkl_files:
-                plot_rl_best_scores(pkl_files)
+            data_files = [os.path.join(results_dir, f) for f in os.listdir(results_dir) 
+                         if (f.endswith('.pkl') or f.endswith('.txt')) and 'rl_single_agent' in f][:5]
+            if data_files:
+                plot_rl_best_scores(data_files)
         elif choice == '5':
             plot_prediction_scatter()
 
 
 if __name__ == '__main__':
-    plot_prediction_scatter()
+    main()
