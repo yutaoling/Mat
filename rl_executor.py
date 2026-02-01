@@ -17,7 +17,7 @@ from rl_dqn_agents import (
     DEFAULT_INIT_EPSILON,
     device,
 )
-from model_env import ID, COMP, PROC_BOOL, PROC_SCALAR, PHASE_SCALAR, PROP
+from surrogate_model import ID, COMP, PROC_BOOL, PROC_SCALAR, PHASE_SCALAR, PROP
 import torch
 import os
 N_JOBS=5

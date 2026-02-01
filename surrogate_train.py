@@ -15,7 +15,39 @@ from sklearn.base import TransformerMixin, InconsistentVersionWarning
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error
 
-from model_env import *
+from surrogate_model import *
+
+MODEL_LIST = [
+    ELM_CPrPh().to(device),
+    ELM_C().to(device),
+    ELM_CPh().to(device),
+    ELM_CPr().to(device),
+    FCNN().to(device),
+    FCNN_MSHBranched().to(device),
+    FCNN_FullyBranched().to(device),
+    FCNN_ElemFeat().to(device),
+    FCNN_ElemFeat_MSHBranched().to(device),
+    FCNN_ElemFeat_FullyBranched().to(device),
+    Attention().to(device),
+    Attention_MSHBranched().to(device),
+    Attention_FullyBranched().to(device),
+]
+
+MODEL_NAMES = [
+    'ELM_CPrPh',
+    'ELM_C',
+    'ELM_CPh',
+    'ELM_CPr',
+    'FCNN',
+    'FCNN_MSHBranched',
+    'FCNN_FullyBranched',
+    'FCNN_ElemFeat',
+    'FCNN_ElemFeat_MSHBranched',
+    'FCNN_ElemFeat_FullyBranched',
+    'Attention',
+    'Attention_MSHBranched',
+    'Attention_FullyBranched',
+]
 
 def set_seed(seed):
     random.seed(seed)
@@ -215,7 +247,7 @@ def MaskedLoss(out, prop, mask, prop_scaler=None):
     scaler_mean = cached['scaler_mean']
     scaler_scale = cached['scaler_scale']
     
-    loss = nn.functional.huber_loss(out, prop, reduction='none') * mask * weights
+    loss = nn.functional.huber_loss(out, prop, reduction='none', delta=1) * mask * weights
     
     out_original = out * scaler_scale + scaler_mean
     constraint_positive = nn.functional.relu(-out_original) * mask * weights
@@ -299,7 +331,7 @@ def Make_Masked_Data(train_data, test_data, rng_seed = seed):
     masked_test_data = (test_data[0], test_data[1], test_data[2], test_data[3], test_data[4], test_prop_masked, test_data[6])
     return masked_test_data
 
-def train_a_model(model = Attention_Model(),
+def train_a_model(model = None,
                     train_d = None,
                     val_d = None,
                     scalers = None,
@@ -366,15 +398,16 @@ def train_a_model(model = Attention_Model(),
     
     return model
 
-def get_model(model = Attention_Model(),
+def get_model(model = None,
               model_path = 'model.pth',
               data_path = 'data.pth',
               resume = False,
+              train = True,
               save_path=None,):
     if not os.path.exists(data_path):
         d = load_data()
-        d, scalers = fit_transform(d)
         d = filter_activated_data(d, activated_value=1)
+        d, scalers = fit_transform(d)
         train_d, val_d = train_validate_split(d, (0.9, 0.1))
         joblib.dump((train_d, val_d, scalers), data_path)
     else:
@@ -383,29 +416,55 @@ def get_model(model = Attention_Model(),
     if resume:
         model.load_state_dict(torch.load(model_path, map_location=device))
 
-    model=train_a_model(model = model, train_d = train_d, val_d = val_d, scalers = scalers, save_path=save_path, num_training_epochs=2000)
-    torch.save(model.state_dict(), model_path)
+    if train:
+        model=train_a_model(model = model,
+            train_d = train_d,
+            val_d = val_d,
+            scalers = scalers,
+            save_path=save_path,
+            num_training_epochs=1000)
+        torch.save(model.state_dict(), model_path)
     
     return model, train_d, val_d, scalers
 
 if __name__ == '__main__':
-    model = Baseline_Model().to(device)
-    get_model(model, f'models/surrogate/model_Baseline.pth',f'models/surrogate/data.pth',resume=False,save_path='logs/surrogate/train_Baseline.txt')
+    model_list = [
+        ELM_CPrPh().to(device),
+        ELM_C().to(device),
+        ELM_CPh().to(device),
+        ELM_CPr().to(device),
+        FCNN().to(device),
+        FCNN_MSHBranched().to(device),
+        FCNN_FullyBranched().to(device),
+        FCNN_ElemFeat().to(device),
+        FCNN_ElemFeat_MSHBranched().to(device),
+        FCNN_ElemFeat_FullyBranched().to(device),
+        Attention().to(device),
+        Attention_MSHBranched().to(device),
+        Attention_FullyBranched().to(device),
+    ]
 
-    model = Baseline_Comp_Model().to(device)
-    get_model(model, f'models/surrogate/model_Baseline_C.pth',f'models/surrogate/data.pth',resume=False,save_path='logs/surrogate/train_Baseline_C.txt')
+    model_names = [
+        'ELM_CPrPh',
+        'ELM_C',
+        'ELM_CPh',
+        'ELM_CPr',
+        'FCNN',
+        'FCNN_MSHBranched',
+        'FCNN_FullyBranched',
+        'FCNN_ElemFeat',
+        'FCNN_ElemFeat_MSHBranched',
+        'FCNN_ElemFeat_FullyBranched',
+        'Attention',
+        'Attention_MSHBranched',
+        'Attention_FullyBranched',
+    ]
 
-    model = Baseline_CompPhase_Model().to(device)
-    get_model(model, f'models/surrogate/model_Baseline_CP.pth',f'models/surrogate/data.pth',resume=False,save_path='logs/surrogate/train_Baseline_CP.txt')
-
-    model = FCNN_Model().to(device)
-    get_model(model, f'models/surrogate/model_FCNN.pth',f'models/surrogate/data.pth',resume=False,save_path='logs/surrogate/train_FCNN.txt')
-    
-    model = Attention_Model().to(device)
-    get_model(model, f'models/surrogate/model_Attention.pth',f'models/surrogate/data.pth',resume=False,save_path='logs/surrogate/train_Attention.txt')
-
-    model = CNN_Branched_Model().to(device)
-    get_model(model, f'models/surrogate/model_CNN.pth',f'models/surrogate/data.pth',resume=False,save_path='logs/surrogate/train_CNN.txt')
-
-    model = FCNN_NoElemFeat_Model().to(device)
-    get_model(model, f'models/surrogate/model_FCNN_NEF.pth',f'models/surrogate/data.pth',resume=False,save_path='logs/surrogate/train_FCNN_NEF.txt')
+    for model, model_name in zip(MODEL_LIST, MODEL_NAMES):
+        print(f"\nTraining model: {model_name}\n")
+        get_model(model,
+            f'models/surrogate/model_{model_name}.pth',
+            f'models/surrogate/data.pth',
+            resume=False,
+            train=True,
+            save_path=f'logs/surrogate/train_{model_name}.txt')

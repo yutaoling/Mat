@@ -19,8 +19,8 @@ from sklearn.gaussian_process.kernels import Matern
 from bayes_opt.util import ensure_rng
 import torch
 
-from model_env_train import get_model, device, N_PROP
-from model_env import N_PROC_BOOL, N_PROC_SCALAR, N_PHASE_SCALAR
+from surroagate_train import get_model, device, N_PROP
+from surrogate_model import N_PROC_BOOL, N_PROC_SCALAR, N_PHASE_SCALAR
 from rl_proc_constants import (
     DEF_TEMP_CANDIDATES, DEF_TEMP_MAX, DEF_STRAIN_CANDIDATES, DEF_STRAIN_MAX,
     HT1_TEMP_CANDIDATES, HT1_TEMP_MAX, HT1_TIME_CANDIDATES, HT1_TIME_MAX,
@@ -174,7 +174,7 @@ def get_ground_truth_func(model_path = 'model\\model.pth', data_path = 'model\\d
     with warnings.catch_warnings():
         from sklearn.base import InconsistentVersionWarning
         warnings.filterwarnings('ignore', category=InconsistentVersionWarning)
-        model, d, scalers = get_model(model=FCNN_Model(), default_model_pth=model_path, default_data_pth=data_path, resume=True)
+        model, d, scalers = get_model(model=FCNN_Model(), default_model_pth=model_path, default_data_pth=data_path, resume=True, train=False)
     model.eval()    # NOTE important
 
     # 检查scalers数量
@@ -256,7 +256,7 @@ def get_ground_truth_func_with_proc(model_path = 'models/surrogate/model_multi.p
     with warnings.catch_warnings():
         from sklearn.base import InconsistentVersionWarning
         warnings.filterwarnings('ignore', category=InconsistentVersionWarning)
-        model, d, scalers = get_model(model=FCNN_Model(), default_model_pth=model_path, default_data_pth=data_path, resume=True)
+        model, d, scalers = get_model(model=FCNN_Model(), default_model_pth=model_path, default_data_pth=data_path, resume=True, train=False)
     model.eval()
 
     # 检查scalers数量

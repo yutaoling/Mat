@@ -15,8 +15,6 @@ import warnings
 from environment import *
 from buffer import ReplayBuffer
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
 def hidden_init(layer):
     fan_in = layer.weight.data.size()[0]
     lim = 1. / np.sqrt(fan_in)
