@@ -1,3 +1,4 @@
+import torch
 import os
 import random
 from typing import Callable, Tuple
@@ -5,7 +6,6 @@ import warnings
 import joblib
 import pandas as pd
 import numpy as np
-import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset, Dataset
@@ -31,6 +31,7 @@ MODEL_LIST = [
     Attention().to(device),
     Attention_MSHBranched().to(device),
     Attention_FullyBranched().to(device),
+    TiAlloyNet().to(device)
 ]
 
 MODEL_NAMES = [

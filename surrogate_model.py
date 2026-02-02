@@ -1,5 +1,5 @@
-import numpy as np
 import torch
+import numpy as np
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
@@ -40,6 +40,9 @@ N_PROC_BOOL = len(PROC_BOOL)
 N_PROC_SCALAR = len(PROC_SCALAR)
 N_PHASE_SCALAR = len(PHASE_SCALAR)
 N_PROP = len(PROP)
+
+N_FC_NERON = 128
+N_BRANCH_NERON = 64
 LEARNING_RATE = 5e-4
 
 device=torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -53,8 +56,8 @@ class ELM_CPrPh(nn.Module):
     def __init__(self):
         super(ELM_CPrPh, self).__init__()
         
-        self.fc1 = nn.Linear(N_ELEM + N_PROC_BOOL + N_PROC_SCALAR + N_PHASE_SCALAR, 128)
-        self.fc2 = nn.Linear(128, 5)
+        self.fc1 = nn.Linear(N_ELEM + N_PROC_BOOL + N_PROC_SCALAR + N_PHASE_SCALAR, N_FC_NERON)
+        self.fc2 = nn.Linear(N_FC_NERON, 5)
         self.af = nn.LeakyReLU(0.2)
         
         self.reset_parameters()
@@ -80,8 +83,8 @@ class ELM_C(nn.Module):
     def __init__(self):
         super(ELM_C, self).__init__()
         
-        self.fc1 = nn.Linear(N_ELEM, 128)
-        self.fc2 = nn.Linear(128, 5)
+        self.fc1 = nn.Linear(N_ELEM, N_FC_NERON)
+        self.fc2 = nn.Linear(N_FC_NERON, 5)
         self.af = nn.LeakyReLU(0.2)
         
         self.reset_parameters()
@@ -104,8 +107,8 @@ class ELM_CPh(nn.Module):
     def __init__(self):
         super(ELM_CPh, self).__init__()
         
-        self.fc1 = nn.Linear(N_ELEM + N_PHASE_SCALAR, 128)
-        self.fc2 = nn.Linear(128, 5)
+        self.fc1 = nn.Linear(N_ELEM + N_PHASE_SCALAR, N_FC_NERON)
+        self.fc2 = nn.Linear(N_FC_NERON, 5)
         self.af = nn.LeakyReLU(0.2)
         
         self.reset_parameters()
@@ -129,8 +132,8 @@ class ELM_CPr(nn.Module):
     def __init__(self):
         super(ELM_CPr, self).__init__()
         
-        self.fc1 = nn.Linear(N_ELEM + N_PROC_BOOL + N_PROC_SCALAR, 128)
-        self.fc2 = nn.Linear(128, 5)
+        self.fc1 = nn.Linear(N_ELEM + N_PROC_BOOL + N_PROC_SCALAR, N_FC_NERON)
+        self.fc2 = nn.Linear(N_FC_NERON, 5)
         self.af = nn.LeakyReLU(0.2)
         
         self.reset_parameters()
@@ -228,9 +231,7 @@ class FCNN(nn.Module):
         super(FCNN, self).__init__()
 
         self._n_in_fcnn = N_ELEM + N_PROC_BOOL + N_PROC_SCALAR + N_PHASE_SCALAR
-        self._n_fcnn = 128
-        self._n_branch = 64
-        self._n_hv = 32
+        self._n_fcnn = N_FC_NERON
 
         self.fc1 = nn.Linear(self._n_in_fcnn, self._n_fcnn)
         self.bn1 = nn.BatchNorm1d(self._n_fcnn)
@@ -284,9 +285,9 @@ class FCNN_MSHBranched(nn.Module):
         super(FCNN_MSHBranched, self).__init__()
 
         self._n_in_fcnn = N_ELEM + N_PROC_BOOL + N_PROC_SCALAR + N_PHASE_SCALAR
-        self._n_fcnn = 128
-        self._n_branch = 64
-        self._n_hv = 32
+        self._n_fcnn = N_FC_NERON
+        self._n_branch = N_BRANCH_NERON
+
         self.fc1 = nn.Linear(self._n_in_fcnn, self._n_fcnn)
         self.bn1 = nn.BatchNorm1d(self._n_fcnn)
         self.fc2 = nn.Linear(self._n_fcnn, self._n_fcnn)
@@ -302,10 +303,10 @@ class FCNN_MSHBranched(nn.Module):
         self.fc_s2 = nn.Linear(self._n_branch, self._n_branch)
         self.out_s = nn.Linear(self._n_branch, 3)
 
-        self.fc_h1 = nn.Linear(self._n_fcnn, self._n_hv)
-        self.bn_h1 = nn.BatchNorm1d(self._n_hv)
-        self.fc_h2 = nn.Linear(self._n_hv, self._n_hv)
-        self.out_h = nn.Linear(self._n_hv, 1)
+        self.fc_h1 = nn.Linear(self._n_fcnn, self._n_branch)
+        self.bn_h1 = nn.BatchNorm1d(self._n_branch)
+        self.fc_h2 = nn.Linear(self._n_branch, self._n_branch)
+        self.out_h = nn.Linear(self._n_branch, 1)
 
         self.af = nn.LeakyReLU(0.2)
         self.dropout = nn.Dropout(0.2)
@@ -358,9 +359,9 @@ class FCNN_FullyBranched(nn.Module):
         super(FCNN_FullyBranched, self).__init__()
 
         self._n_in_fcnn = N_ELEM + N_PROC_BOOL + N_PROC_SCALAR + N_PHASE_SCALAR
-        self._n_fcnn = 128
-        self._n_branch = 64
-        self._n_hv = 32
+        self._n_fcnn = N_FC_NERON
+        self._n_branch = N_BRANCH_NERON
+
         self.fc1 = nn.Linear(self._n_in_fcnn, self._n_fcnn)
         self.bn1 = nn.BatchNorm1d(self._n_fcnn)
         self.fc2 = nn.Linear(self._n_fcnn, self._n_fcnn)
@@ -386,10 +387,10 @@ class FCNN_FullyBranched(nn.Module):
         self.fc_el2 = nn.Linear(self._n_branch, self._n_branch)
         self.out_el = nn.Linear(self._n_branch, 1)
 
-        self.fc_hv1 = nn.Linear(self._n_fcnn, self._n_hv)
-        self.bn_hv1 = nn.BatchNorm1d(self._n_hv)
-        self.fc_hv2 = nn.Linear(self._n_hv, self._n_hv)
-        self.out_hv = nn.Linear(self._n_hv, 1)
+        self.fc_hv1 = nn.Linear(self._n_fcnn, self._n_branch)
+        self.bn_hv1 = nn.BatchNorm1d(self._n_branch)
+        self.fc_hv2 = nn.Linear(self._n_branch, self._n_branch)
+        self.out_hv = nn.Linear(self._n_branch, 1)
 
         self.af = nn.LeakyReLU(0.2)
         self.dropout = nn.Dropout(0.2)
@@ -450,9 +451,7 @@ class FCNN_ElemFeat(nn.Module):
         super(FCNN_ElemFeat, self).__init__()
 
         self._n_in_fcnn = N_ELEM + N_ELEM_FEAT + N_PROC_BOOL + N_PROC_SCALAR + N_PHASE_SCALAR
-        self._n_fcnn = 128
-        self._n_branch = 64
-        self._n_hv = 32
+        self._n_fcnn = N_FC_NERON
 
         self.fc1 = nn.Linear(self._n_in_fcnn, self._n_fcnn)
         self.bn1 = nn.BatchNorm1d(self._n_fcnn)
@@ -508,9 +507,9 @@ class FCNN_ElemFeat_MSHBranched(nn.Module):
         super(FCNN_ElemFeat_MSHBranched, self).__init__()
 
         self._n_in_fcnn = N_ELEM + N_ELEM_FEAT + N_PROC_BOOL + N_PROC_SCALAR + N_PHASE_SCALAR
-        self._n_fcnn = 128
-        self._n_branch = 64
-        self._n_hv = 32
+        self._n_fcnn = N_FC_NERON
+        self._n_branch = N_BRANCH_NERON
+
         self.fc1 = nn.Linear(self._n_in_fcnn, self._n_fcnn)
         self.bn1 = nn.BatchNorm1d(self._n_fcnn)
         self.fc2 = nn.Linear(self._n_fcnn, self._n_fcnn)
@@ -526,10 +525,10 @@ class FCNN_ElemFeat_MSHBranched(nn.Module):
         self.fc_s2 = nn.Linear(self._n_branch, self._n_branch)
         self.out_s = nn.Linear(self._n_branch, 3)
 
-        self.fc_h1 = nn.Linear(self._n_fcnn, self._n_hv)
-        self.bn_h1 = nn.BatchNorm1d(self._n_hv)
-        self.fc_h2 = nn.Linear(self._n_hv, self._n_hv)
-        self.out_h = nn.Linear(self._n_hv, 1)
+        self.fc_h1 = nn.Linear(self._n_fcnn, self._n_branch)
+        self.bn_h1 = nn.BatchNorm1d(self._n_branch)
+        self.fc_h2 = nn.Linear(self._n_branch, self._n_branch)
+        self.out_h = nn.Linear(self._n_branch, 1)
 
         self.af = nn.LeakyReLU(0.2)
         self.dropout = nn.Dropout(0.2)
@@ -584,9 +583,9 @@ class FCNN_ElemFeat_FullyBranched(nn.Module):
         super(FCNN_ElemFeat_FullyBranched, self).__init__()
 
         self._n_in_fcnn = N_ELEM + N_ELEM_FEAT + N_PROC_BOOL + N_PROC_SCALAR + N_PHASE_SCALAR
-        self._n_fcnn = 128
-        self._n_branch = 64
-        self._n_hv = 32
+        self._n_fcnn = N_FC_NERON
+        self._n_branch = N_BRANCH_NERON
+        
         self.fc1 = nn.Linear(self._n_in_fcnn, self._n_fcnn)
         self.bn1 = nn.BatchNorm1d(self._n_fcnn)
         self.fc2 = nn.Linear(self._n_fcnn, self._n_fcnn)
@@ -612,10 +611,10 @@ class FCNN_ElemFeat_FullyBranched(nn.Module):
         self.fc_el2 = nn.Linear(self._n_branch, self._n_branch)
         self.out_el = nn.Linear(self._n_branch, 1)
 
-        self.fc_hv1 = nn.Linear(self._n_fcnn, self._n_hv)
-        self.bn_hv1 = nn.BatchNorm1d(self._n_hv)
-        self.fc_hv2 = nn.Linear(self._n_hv, self._n_hv)
-        self.out_hv = nn.Linear(self._n_hv, 1)
+        self.fc_hv1 = nn.Linear(self._n_fcnn, self._n_branch)
+        self.bn_hv1 = nn.BatchNorm1d(self._n_branch)
+        self.fc_hv2 = nn.Linear(self._n_branch, self._n_branch)
+        self.out_hv = nn.Linear(self._n_branch, 1)
 
         self.af = nn.LeakyReLU(0.2)
         self.dropout = nn.Dropout(0.2)
@@ -686,7 +685,7 @@ class CNN(nn.Module):
         
         self._n_cnn_out = N_ELEM * N_ELEM_FEAT_P1
         self._n_in_fcnn = self._n_cnn_out + N_PROC_BOOL + N_PROC_SCALAR + N_PHASE_SCALAR
-        self._n_fcnn = 128
+        self._n_fcnn = N_FC_NERON
         
         self.fc1 = nn.Linear(self._n_in_fcnn, self._n_fcnn)
         self.bn1 = nn.BatchNorm1d(self._n_fcnn)
@@ -756,9 +755,8 @@ class CNN_MSHBranched(nn.Module):
         
         self._n_cnn_out = N_ELEM * N_ELEM_FEAT_P1
         self._n_in_fcnn = self._n_cnn_out + N_PROC_BOOL + N_PROC_SCALAR + N_PHASE_SCALAR
-        self._n_fcnn = 128
-        self._n_branch = 64
-        self._n_hv = 32
+        self._n_fcnn = N_FC_NERON
+        self._n_branch = N_BRANCH_NERON
         
         self.fc_m1 = nn.Linear(self._n_in_fcnn, self._n_branch)
         self.bn_m1 = nn.BatchNorm1d(self._n_branch)
@@ -770,10 +768,10 @@ class CNN_MSHBranched(nn.Module):
         self.fc_s2 = nn.Linear(self._n_branch, self._n_branch)
         self.out_s = nn.Linear(self._n_branch, 3)
         
-        self.fc_v1 = nn.Linear(self._n_in_fcnn, self._n_hv)
-        self.bn_v1 = nn.BatchNorm1d(self._n_hv)
-        self.fc_v2 = nn.Linear(self._n_hv, self._n_hv)
-        self.out_v = nn.Linear(self._n_hv, 1)
+        self.fc_v1 = nn.Linear(self._n_in_fcnn, self._n_branch)
+        self.bn_v1 = nn.BatchNorm1d(self._n_branch)
+        self.fc_v2 = nn.Linear(self._n_branch, self._n_branch)
+        self.out_v = nn.Linear(self._n_branch, 1)
         
         self.af = nn.LeakyReLU(0.2)
         self.dropout = nn.Dropout(0.2)
@@ -845,9 +843,8 @@ class CNN_Fully_Branched(nn.Module):
         
         self._n_cnn_out = N_ELEM * N_ELEM_FEAT_P1
         self._n_in_fcnn = self._n_cnn_out + N_PROC_BOOL + N_PROC_SCALAR + N_PHASE_SCALAR
-        self._n_fcnn = 128
-        self._n_branch = 64
-        self._n_hv = 32
+        self._n_fcnn = N_FC_NERON
+        self._n_branch = N_BRANCH_NERON
         
         self.fc_ym1 = nn.Linear(self._n_in_fcnn, self._n_branch)
         self.bn_ym1 = nn.BatchNorm1d(self._n_branch)
@@ -869,10 +866,10 @@ class CNN_Fully_Branched(nn.Module):
         self.fc_el2 = nn.Linear(self._n_branch, self._n_branch)
         self.out_el = nn.Linear(self._n_branch, 1)
 
-        self.fc_hv1 = nn.Linear(self._n_in_fcnn, self._n_hv)
-        self.bn_hv1 = nn.BatchNorm1d(self._n_hv)
-        self.fc_hv2 = nn.Linear(self._n_hv, self._n_hv)
-        self.out_hv = nn.Linear(self._n_hv, 1)
+        self.fc_hv1 = nn.Linear(self._n_in_fcnn, self._n_branch)
+        self.bn_hv1 = nn.BatchNorm1d(self._n_branch)
+        self.fc_hv2 = nn.Linear(self._n_branch, self._n_branch)
+        self.out_hv = nn.Linear(self._n_branch, 1)
         
         self.af = nn.LeakyReLU(0.2)
         self.dropout = nn.Dropout(0.2)
@@ -985,7 +982,7 @@ class Attention(nn.Module):
 
         self.proc_phase_dim = N_PROC_BOOL + N_PROC_SCALAR + N_PHASE_SCALAR
         self.fusion_input_dim = self.base_feat_dim + self.attn_hidden_dim + self.proc_phase_dim
-        self.global_hidden_dim = 128
+        self.global_hidden_dim = N_FC_NERON
 
         self.fc_main = nn.Sequential(
             nn.Linear(self.fusion_input_dim, self.global_hidden_dim),
@@ -997,7 +994,7 @@ class Attention(nn.Module):
             nn.LeakyReLU(0.2),
         )
 
-        self.branch_dim = 64
+        self.branch_dim = N_BRANCH_NERON
 
         self.head_x = self._make_head(self.branch_dim, 5)
 
@@ -1115,7 +1112,7 @@ class Attention_MSHBranched(nn.Module):
 
         self.proc_phase_dim = N_PROC_BOOL + N_PROC_SCALAR + N_PHASE_SCALAR
         self.fusion_input_dim = self.base_feat_dim + self.attn_hidden_dim + self.proc_phase_dim
-        self.global_hidden_dim = 128
+        self.global_hidden_dim = N_FC_NERON
 
         self.fc_main = nn.Sequential(
             nn.Linear(self.fusion_input_dim, self.global_hidden_dim),
@@ -1127,11 +1124,11 @@ class Attention_MSHBranched(nn.Module):
             nn.LeakyReLU(0.2),
         )
 
-        self.branch_dim = 64
+        self.branch_dim = N_BRANCH_NERON
 
         self.head_ym = self._make_head(self.branch_dim, 1)
         self.head_s = self._make_head(self.branch_dim, 3)
-        self.head_hv = self._make_head(32, 1)
+        self.head_hv = self._make_head(self.branch_dim, 1)
 
         self.lr = LEARNING_RATE        
         self.optimizer = optim.Adam(self.parameters(), lr=self.lr, weight_decay=1e-4)
@@ -1251,7 +1248,7 @@ class Attention_FullyBranched(nn.Module):
 
         self.proc_phase_dim = N_PROC_BOOL + N_PROC_SCALAR + N_PHASE_SCALAR
         self.fusion_input_dim = self.base_feat_dim + self.attn_hidden_dim + self.proc_phase_dim
-        self.global_hidden_dim = 128
+        self.global_hidden_dim = N_FC_NERON
 
         self.fc_main = nn.Sequential(
             nn.Linear(self.fusion_input_dim, self.global_hidden_dim),
@@ -1263,13 +1260,13 @@ class Attention_FullyBranched(nn.Module):
             nn.LeakyReLU(0.2),
         )
 
-        self.branch_dim = 64
+        self.branch_dim = N_BRANCH_NERON
 
         self.head_ym = self._make_head(self.branch_dim, 1)
         self.head_ys = self._make_head(self.branch_dim, 1)
         self.head_uts = self._make_head(self.branch_dim, 1)
         self.head_el = self._make_head(self.branch_dim, 1)
-        self.head_hv = self._make_head(32, 1)
+        self.head_hv = self._make_head(self.branch_dim, 1)
 
         self.lr = LEARNING_RATE        
         self.optimizer = optim.Adam(self.parameters(), lr=self.lr, weight_decay=1e-4)
@@ -1349,27 +1346,17 @@ class Attention_FullyBranched(nn.Module):
 
 class TiAlloyNet(nn.Module):
     def __init__(self):
-        super(FCNN_FullyBranched, self).__init__()
+        super(TiAlloyNet, self).__init__()
 
         self._n_in_fcnn = N_ELEM + N_PROC_BOOL + N_PROC_SCALAR + N_PHASE_SCALAR
-        self._n_fcnn = 128
-        self._n_branch = 64
-        self._n_hv = 32
+        self._n_fcnn = N_FC_NERON
+        self._n_branch = N_BRANCH_NERON
+        
         self.fc1 = nn.Linear(self._n_in_fcnn, self._n_fcnn)
         self.bn1 = nn.BatchNorm1d(self._n_fcnn)
         self.out_1 = nn.Linear(self._n_fcnn, 3)
         self.fc2 = nn.Linear(self._n_fcnn, self._n_fcnn)
         self.bn2 = nn.BatchNorm1d(self._n_fcnn)
-
-        self.fc_ym1 = nn.Linear(self._n_fcnn, self._n_branch)
-        self.bn_ym1 = nn.BatchNorm1d(self._n_branch)
-        self.fc_ym2 = nn.Linear(self._n_branch, self._n_branch)
-        self.out_ym = nn.Linear(self._n_branch, 1)
-
-        self.fc_ys1 = nn.Linear(self._n_fcnn, self._n_branch)
-        self.bn_ys1 = nn.BatchNorm1d(self._n_branch)
-        self.fc_ys2 = nn.Linear(self._n_branch, self._n_branch)
-        self.out_ys = nn.Linear(self._n_branch, 1)
 
         self.fc_uts1 = nn.Linear(self._n_fcnn, self._n_branch)
         self.bn_uts1 = nn.BatchNorm1d(self._n_branch)
@@ -1380,11 +1367,6 @@ class TiAlloyNet(nn.Module):
         self.bn_el1 = nn.BatchNorm1d(self._n_branch)
         self.fc_el2 = nn.Linear(self._n_branch, self._n_branch)
         self.out_el = nn.Linear(self._n_branch, 1)
-
-        self.fc_hv1 = nn.Linear(self._n_fcnn, self._n_hv)
-        self.bn_hv1 = nn.BatchNorm1d(self._n_hv)
-        self.fc_hv2 = nn.Linear(self._n_hv, self._n_hv)
-        self.out_hv = nn.Linear(self._n_hv, 1)
 
         self.af = nn.LeakyReLU(0.2)
         self.dropout = nn.Dropout(0.2)
@@ -1426,7 +1408,7 @@ class TiAlloyNet(nn.Module):
         el = self.af(self.fc_el2(el))
         el = self.out_el(el)
         
-        x = torch.cat([out_1[0], out_1[1], uts, el, out_1[2]], dim=-1)
+        x = torch.cat([out_1[:,0:1], out_1[:,1:2], uts, el, out_1[:,2:3]], dim=-1)
         return x
 
 
