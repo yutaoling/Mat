@@ -1349,37 +1349,85 @@ class Attention_FullyBranched(nn.Module):
 
 class TiAlloyNet(nn.Module):
     def __init__(self):
-        super(TiAlloyNet, self).__init__()
+        super(FCNN_FullyBranched, self).__init__()
+
         self._n_in_fcnn = N_ELEM + N_PROC_BOOL + N_PROC_SCALAR + N_PHASE_SCALAR
         self._n_fcnn = 128
         self._n_branch = 64
         self._n_hv = 32
-
         self.fc1 = nn.Linear(self._n_in_fcnn, self._n_fcnn)
         self.bn1 = nn.BatchNorm1d(self._n_fcnn)
-        self.ym_hv = nn.Linear(self._n_fcnn, 2)
+        self.out_1 = nn.Linear(self._n_fcnn, 3)
+        self.fc2 = nn.Linear(self._n_fcnn, self._n_fcnn)
+        self.bn2 = nn.BatchNorm1d(self._n_fcnn)
+
+        self.fc_ym1 = nn.Linear(self._n_fcnn, self._n_branch)
+        self.bn_ym1 = nn.BatchNorm1d(self._n_branch)
+        self.fc_ym2 = nn.Linear(self._n_branch, self._n_branch)
+        self.out_ym = nn.Linear(self._n_branch, 1)
+
+        self.fc_ys1 = nn.Linear(self._n_fcnn, self._n_branch)
+        self.bn_ys1 = nn.BatchNorm1d(self._n_branch)
+        self.fc_ys2 = nn.Linear(self._n_branch, self._n_branch)
+        self.out_ys = nn.Linear(self._n_branch, 1)
+
+        self.fc_uts1 = nn.Linear(self._n_fcnn, self._n_branch)
+        self.bn_uts1 = nn.BatchNorm1d(self._n_branch)
+        self.fc_uts2 = nn.Linear(self._n_branch, self._n_branch)
+        self.out_uts = nn.Linear(self._n_branch, 1)
+
+        self.fc_el1 = nn.Linear(self._n_fcnn, self._n_branch)
+        self.bn_el1 = nn.BatchNorm1d(self._n_branch)
+        self.fc_el2 = nn.Linear(self._n_branch, self._n_branch)
+        self.out_el = nn.Linear(self._n_branch, 1)
+
+        self.fc_hv1 = nn.Linear(self._n_fcnn, self._n_hv)
+        self.bn_hv1 = nn.BatchNorm1d(self._n_hv)
+        self.fc_hv2 = nn.Linear(self._n_hv, self._n_hv)
+        self.out_hv = nn.Linear(self._n_hv, 1)
 
         self.af = nn.LeakyReLU(0.2)
         self.dropout = nn.Dropout(0.2)
-        self.reset_parameters()        
-        self.lr = LEARNING_RATE
+
+        self.reset_parameters()
+
+        self.lr = LEARNING_RATE        
         self.optimizer = optim.Adam(self.parameters(), lr=self.lr, weight_decay=1e-4)
+        
 
     def reset_parameters(self):
         for m in self.modules():
-            if isinstance(m, nn.Linear):
+            if isinstance(m, nn.Conv2d):
+                init.kaiming_uniform_(m.weight, nonlinearity='relu')
+                if m.bias is not None: m.bias.data.zero_()
+            elif isinstance(m, nn.Linear):
                 init.xavier_uniform_(m.weight)
-                if m.bias is not None:
-                    m.bias.data.zero_()
-            elif isinstance(m, nn.BatchNorm1d):
-                if m.weight is not None:
-                    m.weight.data.fill_(1.)
-                if m.bias is not None:
-                    m.bias.data.zero_()
+                if m.bias is not None: m.bias.data.zero_()
+            elif isinstance(m, (nn.BatchNorm1d, nn.BatchNorm2d)):
+                if m.weight is not None: m.weight.data.fill_(1.)
+                if m.bias is not None: m.bias.data.zero_()
 
     def forward(self, comp, elem_feature, proc_bool, proc_scalar, phase_scalar):
-        # Placeholder for the actual implementation
-        pass
+        x = torch.cat([comp.reshape(-1, N_ELEM), 
+            proc_bool.reshape(-1, N_PROC_BOOL), 
+            proc_scalar.reshape(-1, N_PROC_SCALAR),
+            phase_scalar.reshape(-1, N_PHASE_SCALAR)], dim=-1)
+        
+        x = self.af(self.bn1(self.fc1(x)))
+        out_1 = self.out_1(x)
+        x = self.dropout(x)
+        x = self.af(self.bn2(self.fc2(x)))
+
+        uts = self.af(self.bn_uts1(self.fc_uts1(x)))
+        uts = self.af(self.fc_uts2(uts))
+        uts = self.out_uts(uts)
+
+        el = self.af(self.bn_el1(self.fc_el1(x)))
+        el = self.af(self.fc_el2(el))
+        el = self.out_el(el)
+        
+        x = torch.cat([out_1[0], out_1[1], uts, el, out_1[2]], dim=-1)
+        return x
 
 
 if __name__ == '__main__':
@@ -1407,6 +1455,7 @@ if __name__ == '__main__':
         Attention().to(device),
         Attention_MSHBranched().to(device),
         Attention_FullyBranched().to(device),
+        TiAlloyNet().to(device)
     ]
     for model in model_list:
         print(f"{model(*test_input).size()}")
