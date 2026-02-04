@@ -413,7 +413,7 @@ def train_a_model(model = None,
         
         scheduler.step(val_loss)
         epoch_log_buffer.append((epoch, _batch_mean_loss, val_loss))
-        if not epoch % 25 or True:
+        if not epoch % 25:
             print(epoch, _batch_mean_loss, val_loss)
         if not epoch % 100 and False:
             if max_sample_val is not None:
@@ -480,8 +480,8 @@ if __name__ == '__main__':
     for model, model_name in zip(MODEL_LIST, MODEL_NAMES):
         print(f"\nTraining model: {model_name}\n")
         get_model(model,
-            f'models/surrogate/model_UW_{model_name}.pth',
+            f'models/surrogate/model_GN_{model_name}.pth',
             f'models/surrogate/data.pth',
             resume=False,
             train=True,
-            save_path=f'logs/surrogate/train_UW_{model_name}.txt')
+            save_path=f'logs/surrogate/train_GN_{model_name}.txt')
