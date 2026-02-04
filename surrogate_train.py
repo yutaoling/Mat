@@ -227,12 +227,13 @@ def _get_cached_tensors(dtype, device, prop_scaler):
         }
     return _cached_loss_tensors[key]
 
-def MaskedLoss(out, prop, mask, sigmas, prop_scaler=None):
+def MaskedLoss(out, prop, mask, sigma_params, prop_scaler=None):
     cached = _get_cached_tensors(out.dtype, out.device, prop_scaler)
     scaler_mean = cached['scaler_mean']
     scaler_scale = cached['scaler_scale']
-    
-    weights = 1.0 / (sigmas ** 2 + 1e-6)
+
+    sigmas = torch.exp(sigma_params)
+    weights = 1.0 / (2.0 * (sigmas ** 2 + 1e-6))
     # weights = torch.ones(sigmas.shape, device=device)
     weights = weights.view(1, -1)
     
@@ -240,14 +241,15 @@ def MaskedLoss(out, prop, mask, sigmas, prop_scaler=None):
     
     out_original = out * scaler_scale + scaler_mean
     constraint_positive = nn.functional.relu(-out_original) * mask * weights
-    constraint_uts_ys = nn.functional.relu(out_original[:, 1] - out_original[:, 2]) * (mask[:, 1] * mask[:, 2])
+    constraint_uts_ys = nn.functional.relu(out_original[:, 1] - out_original[:, 2]) * (mask[:, 1] * mask[:, 2]) * ((weights[0,1] + weights[0,2]) / 2)
     
     total_loss = loss + 10.0 * constraint_positive
     num_valid = mask.sum(dim=1).clamp(min=1e-6)
     mean_loss = total_loss.sum(dim=1) / num_valid + 10.0 * constraint_uts_ys
     
-    reg = torch.log(sigmas + 1e-6).sum()
+    reg = sigma_params.sum()
     
+    sigmas.data.clamp_(min=1e-4)
     return mean_loss.mean() + reg, mean_loss
 
 def train_validate_split(data_tuple, ratio_tuple = (0.95, 0.05)):
@@ -259,42 +261,60 @@ def train_validate_split(data_tuple, ratio_tuple = (0.95, 0.05)):
     return (id_train, comp_train, proc_bool_train, proc_scalar_train, phase_scalar_train, prop_train, elem_feature,), \
             (id_val, comp_val, proc_bool_val, proc_scalar_val, phase_scalar_val, prop_val, elem_feature,)
 
-def validate(model, val_dl, prop_scaler=None, return_sample_info=False):
+def validate(model, val_dl, prop_scaler=None):
     model.eval()
-    id, comp, proc_bool, proc_scalar, phase_scalar, prop, mask, elem_t = next(iter(val_dl))
-    with torch.no_grad():
-        out = model(comp, elem_t, proc_bool, proc_scalar, phase_scalar)
-    prop = prop.reshape(*(out.shape))
-    mask = mask.reshape(*(out.shape))
-    loss, llist = MaskedLoss(out, prop, mask, model.sigmas, prop_scaler)
+    total_loss = 0.0
+    total_samples = 0
+    all_llist = []
+    all_out = []
+    all_prop = []
+    all_mask = []
+    all_id = []
+    for batch in val_dl:
+        id, comp, proc_bool, proc_scalar, phase_scalar, prop, mask, elem_t = batch
+        with torch.no_grad():
+            out = model(comp, elem_t, proc_bool, proc_scalar, phase_scalar)
+        prop = prop.reshape(*(out.shape))
+        mask = mask.reshape(*(out.shape))
+        loss, llist = MaskedLoss(out, prop, mask, model.sigma_params, prop_scaler)
+        total_loss += loss.item() * len(prop)
+        total_samples += len(prop)
+        all_llist.append(llist)
+        all_out.append(out)
+        all_prop.append(prop)
+        all_mask.append(mask)
+        all_id.append(id)
     
-    if not return_sample_info:
-        return float(loss.item())
+    val_loss = total_loss / total_samples
+    all_llist = torch.cat(all_llist)
+    all_out = torch.cat(all_out)
+    all_prop = torch.cat(all_prop)
+    all_mask = torch.cat(all_mask)
+    all_id = torch.cat(all_id)
     
     max_sample = None
     min_sample = None
     
-    max_loss = llist.max()
-    max_idx = llist.argmax()
-    max_sample = {
-        'loss': max_loss.item(),
-        'predicted': out[max_idx].detach().cpu().numpy(),
-        'actual': prop[max_idx].detach().cpu().numpy(),
-        'mask': mask[max_idx].detach().cpu().numpy(),
-        'id': id[max_idx].detach().cpu().numpy(),
-    }
+    if len(all_llist) > 0:
+        max_idx = all_llist.argmax()
+        max_sample = {
+            'loss': all_llist[max_idx].item(),
+            'predicted': all_out[max_idx].detach().cpu().numpy(),
+            'actual': all_prop[max_idx].detach().cpu().numpy(),
+            'mask': all_mask[max_idx].detach().cpu().numpy(),
+            'id': all_id[max_idx].detach().cpu().numpy(),
+        }
+        
+        min_idx = all_llist.argmin()
+        min_sample = {
+            'loss': all_llist[min_idx].item(),
+            'predicted': all_out[min_idx].detach().cpu().numpy(),
+            'actual': all_prop[min_idx].detach().cpu().numpy(),
+            'mask': all_mask[min_idx].detach().cpu().numpy(),
+            'id': all_id[min_idx].detach().cpu().numpy(),
+        }
     
-    min_loss = llist.min()
-    min_idx = llist.argmin()
-    min_sample = {
-        'loss': min_loss.item(),
-        'predicted': out[min_idx].detach().cpu().numpy(),
-        'actual': prop[min_idx].detach().cpu().numpy(),
-        'mask': mask[min_idx].detach().cpu().numpy(),
-        'id': id[min_idx].detach().cpu().numpy(),
-    }
-    
-    return float(loss.item()), max_sample, min_sample
+    return val_loss, max_sample, min_sample
 
 def Make_Masked_Data(train_data, test_data, rng_seed = seed):
     train_prop = train_data[5]
@@ -343,7 +363,7 @@ def train_a_model(model = None,
         _batch_loss_buffer = []
         for id, comp, proc_bool, proc_scalar, phase_scalar, prop, mask, elem_t in train_dl:
             out = model(comp, elem_t, proc_bool, proc_scalar, phase_scalar)
-            l, _ = MaskedLoss(out, prop.reshape(*(out.shape)), mask.reshape(*(out.shape)), model.sigmas, prop_scaler)
+            l, _ = MaskedLoss(out, prop.reshape(*(out.shape)), mask.reshape(*(out.shape)), model.sigma_params, prop_scaler)
 
             model.optimizer.zero_grad()
             l.backward()
@@ -352,13 +372,13 @@ def train_a_model(model = None,
             _batch_loss_buffer.append(l.item())
         
         _batch_mean_loss = np.mean(_batch_loss_buffer)
-        val_loss, max_sample_val, min_sample_val = validate(model, val_dl, prop_scaler, return_sample_info=True)
+        val_loss, max_sample_val, min_sample_val = validate(model, val_dl, prop_scaler)
         
         scheduler.step(val_loss)
         epoch_log_buffer.append((epoch, _batch_mean_loss, val_loss))
         if not epoch % 25:
             print(epoch, _batch_mean_loss, val_loss)
-        if not epoch % 100:
+        if not epoch % 100 and False:
             if max_sample_val is not None:
                 predicted_inv = scalers[4].inverse_transform(max_sample_val['predicted'].reshape(1, -1))
                 actual_inv = max_sample_val['actual'].copy().reshape(1, -1)

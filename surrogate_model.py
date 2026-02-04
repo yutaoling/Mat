@@ -60,7 +60,7 @@ class ELM_CPrPh(nn.Module):
         self.fc2 = nn.Linear(N_FC_NERON, 5)
         self.af = nn.LeakyReLU(0.2)
 
-        self.sigmas = nn.Parameter(torch.ones(5, device=device))
+        self.sigma_params = nn.Parameter(torch.zeros(5, device=device))
         
         self.reset_parameters()
         
@@ -89,7 +89,7 @@ class ELM_C(nn.Module):
         self.fc2 = nn.Linear(N_FC_NERON, 5)
         self.af = nn.LeakyReLU(0.2)
 
-        self.sigmas = nn.Parameter(torch.ones(5, device=device))
+        self.sigma_params = nn.Parameter(torch.zeros(5, device=device))
         
         self.reset_parameters()
         
@@ -115,7 +115,7 @@ class ELM_CPh(nn.Module):
         self.fc2 = nn.Linear(N_FC_NERON, 5)
         self.af = nn.LeakyReLU(0.2)
 
-        self.sigmas = nn.Parameter(torch.ones(5, device=device))
+        self.sigma_params = nn.Parameter(torch.zeros(5, device=device))
         
         self.reset_parameters()
         
@@ -142,7 +142,7 @@ class ELM_CPr(nn.Module):
         self.fc2 = nn.Linear(N_FC_NERON, 5)
         self.af = nn.LeakyReLU(0.2)
 
-        self.sigmas = nn.Parameter(torch.ones(5, device=device))
+        self.sigma_params = nn.Parameter(torch.zeros(5, device=device))
         
         self.reset_parameters()
         
@@ -170,7 +170,7 @@ class ELM_ElemFeat(nn.Module):
         self.fc2 = nn.Linear(N_FC_NERON, 5)
         self.af = nn.LeakyReLU(0.2)
 
-        self.sigmas = nn.Parameter(torch.ones(5, device=device))
+        self.sigma_params = nn.Parameter(torch.zeros(5, device=device))
         
         self.reset_parameters()
         
@@ -211,7 +211,7 @@ class ELM_CNN(nn.Module):
         self.fc2 = nn.Linear(self._n_fcnn, 5)
         self.af = nn.LeakyReLU(0.2)
 
-        self.sigmas = nn.Parameter(torch.ones(5, device=device))
+        self.sigma_params = nn.Parameter(torch.zeros(5, device=device))
         
         self.reset_parameters()
         
@@ -266,7 +266,7 @@ class FCNN(nn.Module):
         self.af = nn.LeakyReLU(0.2)
         self.dropout = nn.Dropout(0.2)
 
-        self.sigmas = nn.Parameter(torch.ones(5, device=device))
+        self.sigma_params = nn.Parameter(torch.zeros(5, device=device))
 
         self.reset_parameters()
 
@@ -333,7 +333,7 @@ class FCNN_MSHBranched(nn.Module):
         self.af = nn.LeakyReLU(0.2)
         self.dropout = nn.Dropout(0.2)
 
-        self.sigmas = nn.Parameter(torch.ones(5, device=device))
+        self.sigma_params = nn.Parameter(torch.zeros(5, device=device))
 
         self.reset_parameters()
 
@@ -419,7 +419,7 @@ class FCNN_FullyBranched(nn.Module):
         self.af = nn.LeakyReLU(0.2)
         self.dropout = nn.Dropout(0.2)
 
-        self.sigmas = nn.Parameter(torch.ones(5, device=device))
+        self.sigma_params = nn.Parameter(torch.zeros(5, device=device))
 
         self.reset_parameters()
 
@@ -492,7 +492,7 @@ class FCNN_ElemFeat(nn.Module):
         self.af = nn.LeakyReLU(0.2)
         self.dropout = nn.Dropout(0.2)
 
-        self.sigmas = nn.Parameter(torch.ones(5, device=device))
+        self.sigma_params = nn.Parameter(torch.zeros(5, device=device))
 
         self.reset_parameters()
 
@@ -561,7 +561,7 @@ class FCNN_ElemFeat_MSHBranched(nn.Module):
         self.af = nn.LeakyReLU(0.2)
         self.dropout = nn.Dropout(0.2)
 
-        self.sigmas = nn.Parameter(torch.ones(5, device=device))
+        self.sigma_params = nn.Parameter(torch.zeros(5, device=device))
 
         self.reset_parameters()
 
@@ -649,7 +649,7 @@ class FCNN_ElemFeat_FullyBranched(nn.Module):
         self.af = nn.LeakyReLU(0.2)
         self.dropout = nn.Dropout(0.2)
 
-        self.sigmas = nn.Parameter(torch.ones(5, device=device))
+        self.sigma_params = nn.Parameter(torch.zeros(5, device=device))
 
         self.reset_parameters()
 
@@ -727,6 +727,8 @@ class CNN(nn.Module):
         
         self.af = nn.LeakyReLU(0.2)
         self.dropout = nn.Dropout(0.2)
+
+        self.sigma_params = nn.Parameter(torch.zeros(5, device=device))
         
         self.reset_parameters()
         
@@ -808,7 +810,7 @@ class CNN_MSHBranched(nn.Module):
         self.af = nn.LeakyReLU(0.2)
         self.dropout = nn.Dropout(0.2)
 
-        self.sigmas = nn.Parameter(torch.ones(5, device=device))
+        self.sigma_params = nn.Parameter(torch.zeros(5, device=device))
         
         self.reset_parameters()
         
@@ -908,7 +910,7 @@ class CNN_FullyBranched(nn.Module):
         self.af = nn.LeakyReLU(0.2)
         self.dropout = nn.Dropout(0.2)
 
-        self.sigmas = nn.Parameter(torch.ones(5, device=device))
+        self.sigma_params = nn.Parameter(torch.zeros(5, device=device))
         
         self.reset_parameters()
         
@@ -1037,7 +1039,7 @@ class Attention(nn.Module):
         self.lr = LEARNING_RATE        
         self.optimizer = optim.Adam(self.parameters(), lr=self.lr, weight_decay=1e-4)
 
-        self.sigmas = nn.Parameter(torch.ones(5, device=device))
+        self.sigma_params = nn.Parameter(torch.zeros(5, device=device))
         
         self._init_weights()
 
@@ -1171,7 +1173,7 @@ class Attention_MSHBranched(nn.Module):
         self.lr = LEARNING_RATE        
         self.optimizer = optim.Adam(self.parameters(), lr=self.lr, weight_decay=1e-4)
 
-        self.sigmas = nn.Parameter(torch.ones(5, device=device))
+        self.sigma_params = nn.Parameter(torch.zeros(5, device=device))
         
         self._init_weights()
 
@@ -1311,7 +1313,7 @@ class Attention_FullyBranched(nn.Module):
         self.lr = LEARNING_RATE        
         self.optimizer = optim.Adam(self.parameters(), lr=self.lr, weight_decay=1e-4)
 
-        self.sigmas = nn.Parameter(torch.ones(5, device=device))
+        self.sigma_params = nn.Parameter(torch.zeros(5, device=device))
         
         self._init_weights()
 
@@ -1420,7 +1422,7 @@ class TiAlloyNet(nn.Module):
         self.af = nn.LeakyReLU(0.2)
         self.dropout = nn.Dropout(0.2)
 
-        self.sigmas = nn.Parameter(torch.ones(5, device=device))
+        self.sigma_params = nn.Parameter(torch.zeros(5, device=device))
 
         self.reset_parameters()
 
