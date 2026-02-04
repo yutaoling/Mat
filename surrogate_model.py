@@ -60,7 +60,8 @@ class ELM_CPrPh(nn.Module):
         self.fc2 = nn.Linear(N_FC_NERON, 5)
         self.af = nn.LeakyReLU(0.2)
 
-        self.sigma_params = nn.Parameter(torch.zeros(5, device=device))
+        self.loss_weights = nn.Parameter(torch.ones(5, device=device))
+        self.shared_layer = self.fc1
         
         self.reset_parameters()
         
@@ -89,8 +90,9 @@ class ELM_C(nn.Module):
         self.fc2 = nn.Linear(N_FC_NERON, 5)
         self.af = nn.LeakyReLU(0.2)
 
-        self.sigma_params = nn.Parameter(torch.zeros(5, device=device))
-        
+        self.loss_weights = nn.Parameter(torch.ones(5, device=device))
+        self.shared_layer = self.fc1
+
         self.reset_parameters()
         
         self.lr = LEARNING_RATE
@@ -115,8 +117,9 @@ class ELM_CPh(nn.Module):
         self.fc2 = nn.Linear(N_FC_NERON, 5)
         self.af = nn.LeakyReLU(0.2)
 
-        self.sigma_params = nn.Parameter(torch.zeros(5, device=device))
-        
+        self.loss_weights = nn.Parameter(torch.ones(5, device=device))
+        self.shared_layer = self.fc1
+
         self.reset_parameters()
         
         self.lr = LEARNING_RATE
@@ -142,8 +145,9 @@ class ELM_CPr(nn.Module):
         self.fc2 = nn.Linear(N_FC_NERON, 5)
         self.af = nn.LeakyReLU(0.2)
 
-        self.sigma_params = nn.Parameter(torch.zeros(5, device=device))
-        
+        self.loss_weights = nn.Parameter(torch.ones(5, device=device))
+        self.shared_layer = self.fc1
+
         self.reset_parameters()
         
         self.lr = LEARNING_RATE
@@ -170,8 +174,9 @@ class ELM_ElemFeat(nn.Module):
         self.fc2 = nn.Linear(N_FC_NERON, 5)
         self.af = nn.LeakyReLU(0.2)
 
-        self.sigma_params = nn.Parameter(torch.zeros(5, device=device))
-        
+        self.loss_weights = nn.Parameter(torch.ones(5, device=device))
+        self.shared_layer = self.fc1
+
         self.reset_parameters()
         
         self.lr = LEARNING_RATE
@@ -211,8 +216,9 @@ class ELM_CNN(nn.Module):
         self.fc2 = nn.Linear(self._n_fcnn, 5)
         self.af = nn.LeakyReLU(0.2)
 
-        self.sigma_params = nn.Parameter(torch.zeros(5, device=device))
-        
+        self.loss_weights = nn.Parameter(torch.ones(5, device=device))
+        self.shared_layer = self.fc1
+
         self.reset_parameters()
         
         self.lr = LEARNING_RATE
@@ -266,7 +272,8 @@ class FCNN(nn.Module):
         self.af = nn.LeakyReLU(0.2)
         self.dropout = nn.Dropout(0.2)
 
-        self.sigma_params = nn.Parameter(torch.zeros(5, device=device))
+        self.loss_weights = nn.Parameter(torch.ones(5, device=device))
+        self.shared_layer = self.fc4
 
         self.reset_parameters()
 
@@ -333,7 +340,8 @@ class FCNN_MSHBranched(nn.Module):
         self.af = nn.LeakyReLU(0.2)
         self.dropout = nn.Dropout(0.2)
 
-        self.sigma_params = nn.Parameter(torch.zeros(5, device=device))
+        self.loss_weights = nn.Parameter(torch.ones(5, device=device))
+        self.shared_layer = self.fc2
 
         self.reset_parameters()
 
@@ -419,7 +427,8 @@ class FCNN_FullyBranched(nn.Module):
         self.af = nn.LeakyReLU(0.2)
         self.dropout = nn.Dropout(0.2)
 
-        self.sigma_params = nn.Parameter(torch.zeros(5, device=device))
+        self.loss_weights = nn.Parameter(torch.ones(5, device=device))
+        self.shared_layer = self.fc2
 
         self.reset_parameters()
 
@@ -492,7 +501,8 @@ class FCNN_ElemFeat(nn.Module):
         self.af = nn.LeakyReLU(0.2)
         self.dropout = nn.Dropout(0.2)
 
-        self.sigma_params = nn.Parameter(torch.zeros(5, device=device))
+        self.loss_weights = nn.Parameter(torch.ones(5, device=device))
+        self.shared_layer = self.fc4
 
         self.reset_parameters()
 
@@ -561,7 +571,8 @@ class FCNN_ElemFeat_MSHBranched(nn.Module):
         self.af = nn.LeakyReLU(0.2)
         self.dropout = nn.Dropout(0.2)
 
-        self.sigma_params = nn.Parameter(torch.zeros(5, device=device))
+        self.loss_weights = nn.Parameter(torch.ones(5, device=device))
+        self.shared_layer = self.fc2
 
         self.reset_parameters()
 
@@ -649,7 +660,8 @@ class FCNN_ElemFeat_FullyBranched(nn.Module):
         self.af = nn.LeakyReLU(0.2)
         self.dropout = nn.Dropout(0.2)
 
-        self.sigma_params = nn.Parameter(torch.zeros(5, device=device))
+        self.loss_weights = nn.Parameter(torch.ones(5, device=device))
+        self.shared_layer = self.fc2
 
         self.reset_parameters()
 
@@ -728,8 +740,9 @@ class CNN(nn.Module):
         self.af = nn.LeakyReLU(0.2)
         self.dropout = nn.Dropout(0.2)
 
-        self.sigma_params = nn.Parameter(torch.zeros(5, device=device))
-        
+        self.loss_weights = nn.Parameter(torch.ones(5, device=device))
+        self.shared_layer = self.fc2
+
         self.reset_parameters()
         
         self.lr = LEARNING_RATE
@@ -810,8 +823,9 @@ class CNN_MSHBranched(nn.Module):
         self.af = nn.LeakyReLU(0.2)
         self.dropout = nn.Dropout(0.2)
 
-        self.sigma_params = nn.Parameter(torch.zeros(5, device=device))
-        
+        self.loss_weights = nn.Parameter(torch.ones(5, device=device))
+        self.shared_layer = self.conv2
+
         self.reset_parameters()
         
         self.lr = LEARNING_RATE
@@ -910,8 +924,9 @@ class CNN_FullyBranched(nn.Module):
         self.af = nn.LeakyReLU(0.2)
         self.dropout = nn.Dropout(0.2)
 
-        self.sigma_params = nn.Parameter(torch.zeros(5, device=device))
-        
+        self.loss_weights = nn.Parameter(torch.ones(5, device=device))
+        self.shared_layer = self.conv2
+
         self.reset_parameters()
         
         self.lr = LEARNING_RATE
@@ -1039,8 +1054,9 @@ class Attention(nn.Module):
         self.lr = LEARNING_RATE        
         self.optimizer = optim.Adam(self.parameters(), lr=self.lr, weight_decay=1e-4)
 
-        self.sigma_params = nn.Parameter(torch.zeros(5, device=device))
-        
+        self.loss_weights = nn.Parameter(torch.ones(5, device=device))
+        self.shared_layer = self.head_x[0]
+
         self._init_weights()
 
     def _init_weights(self):
@@ -1173,8 +1189,9 @@ class Attention_MSHBranched(nn.Module):
         self.lr = LEARNING_RATE        
         self.optimizer = optim.Adam(self.parameters(), lr=self.lr, weight_decay=1e-4)
 
-        self.sigma_params = nn.Parameter(torch.zeros(5, device=device))
-        
+        self.loss_weights = nn.Parameter(torch.ones(5, device=device))
+        self.shared_layer = self.fc_main[4]
+
         self._init_weights()
 
     def _init_weights(self):
@@ -1313,8 +1330,9 @@ class Attention_FullyBranched(nn.Module):
         self.lr = LEARNING_RATE        
         self.optimizer = optim.Adam(self.parameters(), lr=self.lr, weight_decay=1e-4)
 
-        self.sigma_params = nn.Parameter(torch.zeros(5, device=device))
-        
+        self.loss_weights = nn.Parameter(torch.ones(5, device=device))
+        self.shared_layer = self.fc_main[4]
+
         self._init_weights()
 
     def _init_weights(self):
@@ -1422,8 +1440,8 @@ class TiAlloyNet(nn.Module):
         self.af = nn.LeakyReLU(0.2)
         self.dropout = nn.Dropout(0.2)
 
-        self.sigma_params = nn.Parameter(torch.zeros(5, device=device))
-
+        self.loss_weights = nn.Parameter(torch.ones(5, device=device))
+        self.shared_layer = self.fc2
         self.reset_parameters()
 
         self.lr = LEARNING_RATE        
