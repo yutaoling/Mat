@@ -21,23 +21,25 @@ def setup_plot_style():
 
 def plot_training_errors():
     model_names = [
-    'ELM_CPrPh',
-    'FCNN_FullyBranched',
-    'FCNN_ElemFeat_FullyBranched',
-    'CNN_FullyBranched',
-    'Attention_FullyBranched',
+    'ELM_CPrPh', 'ELM_C', 'ELM_CPh', 'ELM_CPr', 
+    'ELM_ElemFeat', 'ELM_CNN',
+    'FCNN', 'FCNN_MSHBranched', 'FCNN_FullyBranched',
+    'FCNN_ElemFeat', 'FCNN_ElemFeat_MSHBranched', 'FCNN_ElemFeat_FullyBranched',
+    'CNN', 'CNN_MSHBranched', 'CNN_FullyBranched',
+    'Attention', 'Attention_MSHBranched', 'Attention_FullyBranched',
     'TiAlloyNet',
 ]
     file_paths = [os.path.join(PROJECT_ROOT, f'logs/surrogate/train_{model_name}.txt') for model_name in model_names]
     labels = model_names
     setup_plot_style()
     plt.figure(figsize=(6, 4))
-    colors = ['#2c3e50', '#3498db', '#e74c3c', '#27ae60', '#8e44ad', '#f39c12']
+    colors = ['#2c3e50', '#3498db', '#e74c3c', '#9b59b6', '#f39c12', '#27ae60', '#1abc9c', '#d35400', '#7f8c8d', '#8e44ad',
+              '#2ecc71', '#e67e22', '#34495e', '#16a085', '#f1c40f', '#2980b9', '#808b96', '#2c3e50', '#3498db', '#e74c3c', '#9b59b6']
     for i, (file_path, label) in enumerate(zip(file_paths, labels)):
         try:
             data = np.loadtxt(file_path)
-            plt.plot(data[:, 0], data[:, 1], label=label+'_T', linewidth=1, color=colors[i], linestyle='-')
-            plt.plot(data[:, 0], data[:, 2], label=label+'_V', linewidth=1, color=colors[i], linestyle='--')
+            # plt.plot(data[:, 0], data[:, 1], label=label+'_T', linewidth=1, color=colors[i], linestyle='-')
+            plt.plot(data[:, 0], data[:, 2], label=label+'_V', linewidth=1, color=colors[i], linestyle='-')
         except Exception:
             pass
     

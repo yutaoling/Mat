@@ -18,23 +18,23 @@ from sklearn.metrics import mean_squared_error
 from surrogate_model import *
 
 MODEL_LIST = [
-    # ELM_CPrPh().to(device), ELM_C().to(device), ELM_CPh().to(device), ELM_CPr().to(device), 
+    ELM_CPrPh().to(device), ELM_C().to(device), ELM_CPh().to(device), ELM_CPr().to(device), 
     ELM_ElemFeat().to(device), ELM_CNN().to(device),
-    # FCNN().to(device), FCNN_MSHBranched().to(device), FCNN_FullyBranched().to(device),
-    # FCNN_ElemFeat().to(device), FCNN_ElemFeat_MSHBranched().to(device), FCNN_ElemFeat_FullyBranched().to(device),
-    # CNN().to(device), CNN_MSHBranched().to(device), CNN_FullyBranched().to(device),
-    # Attention().to(device), Attention_MSHBranched().to(device), Attention_FullyBranched().to(device),
-    # TiAlloyNet().to(device),
+    FCNN().to(device), FCNN_MSHBranched().to(device), FCNN_FullyBranched().to(device),
+    FCNN_ElemFeat().to(device), FCNN_ElemFeat_MSHBranched().to(device), FCNN_ElemFeat_FullyBranched().to(device),
+    CNN().to(device), CNN_MSHBranched().to(device), CNN_FullyBranched().to(device),
+    Attention().to(device), Attention_MSHBranched().to(device), Attention_FullyBranched().to(device),
+    TiAlloyNet().to(device),
 ]
 
 MODEL_NAMES = [
-    # 'ELM_CPrPh', 'ELM_C', 'ELM_CPh', 'ELM_CPr', 
+    'ELM_CPrPh', 'ELM_C', 'ELM_CPh', 'ELM_CPr', 
     'ELM_ElemFeat', 'ELM_CNN',
-    # 'FCNN', 'FCNN_MSHBranched', 'FCNN_FullyBranched',
-    # 'FCNN_ElemFeat', 'FCNN_ElemFeat_MSHBranched', 'FCNN_ElemFeat_FullyBranched',
-    # 'CNN', 'CNN_MSHBranched', 'CNN_FullyBranched',
-    # 'Attention', 'Attention_MSHBranched', 'Attention_FullyBranched',
-    # 'TiAlloyNet',
+    'FCNN', 'FCNN_MSHBranched', 'FCNN_FullyBranched',
+    'FCNN_ElemFeat', 'FCNN_ElemFeat_MSHBranched', 'FCNN_ElemFeat_FullyBranched',
+    'CNN', 'CNN_MSHBranched', 'CNN_FullyBranched',
+    'Attention', 'Attention_MSHBranched', 'Attention_FullyBranched',
+    'TiAlloyNet',
 ]
 
 def set_seed(seed):
@@ -218,22 +218,23 @@ _cached_loss_tensors = {}
 def _get_cached_tensors(dtype, device, prop_scaler):
     key = (dtype, device)
     if key not in _cached_loss_tensors or _cached_loss_tensors[key].get('scaler_id') != id(prop_scaler):
-        weights = torch.ones(5, dtype=dtype, device=device).view(1, -1)
         scaler_mean = torch.tensor(prop_scaler.mean_, dtype=dtype, device=device).view(1, -1)
         scaler_scale = torch.tensor(prop_scaler.scale_, dtype=dtype, device=device).view(1, -1)
         _cached_loss_tensors[key] = {
-            'weights': weights,
             'scaler_mean': scaler_mean,
             'scaler_scale': scaler_scale,
             'scaler_id': id(prop_scaler)
         }
     return _cached_loss_tensors[key]
 
-def MaskedLoss(out, prop, mask, prop_scaler=None):
+def MaskedLoss(out, prop, mask, sigmas, prop_scaler=None):
     cached = _get_cached_tensors(out.dtype, out.device, prop_scaler)
-    weights = cached['weights']
     scaler_mean = cached['scaler_mean']
     scaler_scale = cached['scaler_scale']
+    
+    weights = 1.0 / (sigmas ** 2 + 1e-6)
+    # weights = torch.ones(sigmas.shape, device=device)
+    weights = weights.view(1, -1)
     
     loss = nn.functional.huber_loss(out, prop, reduction='none', delta=1) * mask * weights
     
@@ -242,10 +243,12 @@ def MaskedLoss(out, prop, mask, prop_scaler=None):
     constraint_uts_ys = nn.functional.relu(out_original[:, 1] - out_original[:, 2]) * (mask[:, 1] * mask[:, 2])
     
     total_loss = loss + 10.0 * constraint_positive
-    num_valid = (mask * weights).sum(dim=1).clamp(min=1e-6)
+    num_valid = mask.sum(dim=1).clamp(min=1e-6)
     mean_loss = total_loss.sum(dim=1) / num_valid + 10.0 * constraint_uts_ys
     
-    return mean_loss.mean(), mean_loss
+    reg = torch.log(sigmas + 1e-6).sum()
+    
+    return mean_loss.mean() + reg, mean_loss
 
 def train_validate_split(data_tuple, ratio_tuple = (0.95, 0.05)):
     _random_seed = next(iter(seeds))
@@ -263,7 +266,7 @@ def validate(model, val_dl, prop_scaler=None, return_sample_info=False):
         out = model(comp, elem_t, proc_bool, proc_scalar, phase_scalar)
     prop = prop.reshape(*(out.shape))
     mask = mask.reshape(*(out.shape))
-    loss, llist = MaskedLoss(out, prop, mask, prop_scaler)
+    loss, llist = MaskedLoss(out, prop, mask, model.sigmas, prop_scaler)
     
     if not return_sample_info:
         return float(loss.item())
@@ -340,7 +343,7 @@ def train_a_model(model = None,
         _batch_loss_buffer = []
         for id, comp, proc_bool, proc_scalar, phase_scalar, prop, mask, elem_t in train_dl:
             out = model(comp, elem_t, proc_bool, proc_scalar, phase_scalar)
-            l, _ = MaskedLoss(out, prop.reshape(*(out.shape)), mask.reshape(*(out.shape)), prop_scaler)
+            l, _ = MaskedLoss(out, prop.reshape(*(out.shape)), mask.reshape(*(out.shape)), model.sigmas, prop_scaler)
 
             model.optimizer.zero_grad()
             l.backward()
@@ -420,8 +423,8 @@ if __name__ == '__main__':
     for model, model_name in zip(MODEL_LIST, MODEL_NAMES):
         print(f"\nTraining model: {model_name}\n")
         get_model(model,
-            f'models/surrogate/model_{model_name}.pth',
+            f'models/surrogate/model_UW_{model_name}.pth',
             f'models/surrogate/data.pth',
             resume=False,
             train=True,
-            save_path=f'logs/surrogate/train_{model_name}.txt')
+            save_path=f'logs/surrogate/train_UW_{model_name}.txt')
