@@ -154,6 +154,85 @@ class ELM_CPr(nn.Module):
         x = self.fc2(x)
         return x
 
+class ELM_ElemFeat(nn.Module):
+    def __init__(self):
+        super(ELM_ElemFeat, self).__init__()
+        
+        self.fc1 = nn.Linear(N_ELEM + N_ELEM_FEAT + N_PROC_BOOL + N_PROC_SCALAR + N_PHASE_SCALAR, N_FC_NERON)
+        self.fc2 = nn.Linear(N_FC_NERON, 5)
+        self.af = nn.LeakyReLU(0.2)
+        
+        self.reset_parameters()
+        
+        self.lr = LEARNING_RATE
+        self.optimizer = optim.Adam(self.parameters(), lr=self.lr)
+    
+    def reset_parameters(self):
+        self.fc1.weight.data.uniform_(*hidden_init(self.fc1))
+        self.fc2.weight.data.uniform_(*hidden_init(self.fc2))
+        self.fc2.weight.data.uniform_(-3e-3, 3e-3)
+
+    def forward(self, comp, elem_feature, proc_bool, proc_scalar, phase_scalar):
+        mef = torch.sum(comp.squeeze(-1).squeeze(1).unsqueeze(-1) * elem_feature.squeeze(1), dim=1)
+        x = torch.cat([comp.reshape(-1, N_ELEM), 
+            mef.reshape(-1, N_ELEM_FEAT), 
+            proc_bool.reshape(-1, N_PROC_BOOL), 
+            proc_scalar.reshape(-1, N_PROC_SCALAR),
+            phase_scalar.reshape(-1, N_PHASE_SCALAR)], dim=-1)
+        x = self.af(self.fc1(x))
+        x = self.fc2(x)
+        return x
+
+class ELM_CNN(nn.Module):
+    def __init__(self):
+        super(ELM_CNN, self).__init__()
+
+        self._kernel_size = (1, N_ELEM_FEAT_P1)
+        self.conv1 = nn.Conv2d(in_channels=1, out_channels=N_ELEM_FEAT_P1, kernel_size=self._kernel_size)
+        self.bn_conv1 = nn.BatchNorm2d(N_ELEM_FEAT_P1)
+        self.conv2 = nn.Conv2d(in_channels=1, out_channels=N_ELEM_FEAT_P1, kernel_size=self._kernel_size)
+        self.bn_conv2 = nn.BatchNorm2d(N_ELEM_FEAT_P1)
+        
+        self._n_cnn_out = N_ELEM * N_ELEM_FEAT_P1
+        self._n_in_fcnn = self._n_cnn_out + N_PROC_BOOL + N_PROC_SCALAR + N_PHASE_SCALAR
+        self._n_fcnn = N_FC_NERON
+        
+        self.fc1 = nn.Linear(self._n_in_fcnn, self._n_fcnn)
+        self.fc2 = nn.Linear(self._n_fcnn, 5)
+        self.af = nn.LeakyReLU(0.2)
+        
+        self.reset_parameters()
+        
+        self.lr = LEARNING_RATE
+        self.optimizer = optim.Adam(self.parameters(), lr=self.lr)
+    
+    def reset_parameters(self):
+        self.fc1.weight.data.uniform_(*hidden_init(self.fc1))
+        self.fc2.weight.data.uniform_(*hidden_init(self.fc2))
+        self.fc2.weight.data.uniform_(-3e-3, 3e-3)
+
+    def forward(self, comp, elem_feature, proc_bool, proc_scalar, phase_scalar):
+        x = torch.cat([comp, elem_feature], dim=-1)
+        residual = x
+        
+        x = self.af(self.bn_conv1(self.conv1(x)))
+        x = x.reshape(-1, 1, N_ELEM, N_ELEM_FEAT_P1)
+        x = self.af(self.bn_conv2(self.conv2(x)))
+        x = x.reshape(-1, 1, N_ELEM, N_ELEM_FEAT_P1)
+        
+        x = x + residual
+        x = x.view(-1, self._n_cnn_out)
+        x = torch.cat([
+            x,
+            proc_bool.reshape(-1, N_PROC_BOOL),
+            proc_scalar.reshape(-1, N_PROC_SCALAR),
+            phase_scalar.reshape(-1, N_PHASE_SCALAR)
+        ], dim=-1)
+
+        x = self.af(self.fc1(x))
+        x = self.fc2(x)
+        return x
+
 class CnnDnnModel(nn.Module):
     '''
         CNN, ELU, batch normalization
@@ -1445,7 +1524,7 @@ if __name__ == '__main__':
     )
     
     model_list = [
-        ELM_CPrPh().to(device), ELM_C().to(device), ELM_CPh().to(device), ELM_CPr().to(device),
+        ELM_CPrPh().to(device), ELM_C().to(device), ELM_CPh().to(device), ELM_CPr().to(device), ELM_ElemFeat().to(device), ELM_CNN().to(device),
         FCNN().to(device), FCNN_MSHBranched().to(device), FCNN_FullyBranched().to(device),
         FCNN_ElemFeat().to(device), FCNN_ElemFeat_MSHBranched().to(device), FCNN_ElemFeat_FullyBranched().to(device),
         Attention().to(device), Attention_MSHBranched().to(device), Attention_FullyBranched().to(device),
