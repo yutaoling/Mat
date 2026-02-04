@@ -830,10 +830,10 @@ class CNN_MSHBranched(nn.Module):
         out = torch.cat([m, s, v], dim=-1)
         return out
 
-class CNN_Fully_Branched(nn.Module):
+class CNN_FullyBranched(nn.Module):
 
     def __init__(self):
-        super(CNN_Fully_Branched, self).__init__()
+        super(CNN_FullyBranched, self).__init__()
         
         self._kernel_size = (1, N_ELEM_FEAT_P1)
         self.conv1 = nn.Conv2d(in_channels=1, out_channels=N_ELEM_FEAT_P1, kernel_size=self._kernel_size)

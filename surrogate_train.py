@@ -28,10 +28,13 @@ MODEL_LIST = [
     FCNN_ElemFeat().to(device),
     FCNN_ElemFeat_MSHBranched().to(device),
     FCNN_ElemFeat_FullyBranched().to(device),
+    CNN().to(device),
+    CNN_MSHBranched().to(device),
+    CNN_FullyBranched().to(device),
     Attention().to(device),
     Attention_MSHBranched().to(device),
     Attention_FullyBranched().to(device),
-    TiAlloyNet().to(device)
+    TiAlloyNet().to(device),
 ]
 
 MODEL_NAMES = [
@@ -45,9 +48,13 @@ MODEL_NAMES = [
     'FCNN_ElemFeat',
     'FCNN_ElemFeat_MSHBranched',
     'FCNN_ElemFeat_FullyBranched',
+    'CNN',
+    'CNN_MSHBranched',
+    'CNN_FullyBranched',
     'Attention',
     'Attention_MSHBranched',
     'Attention_FullyBranched',
+    'TiAlloyNet',
 ]
 
 def set_seed(seed):
@@ -368,22 +375,23 @@ def train_a_model(model = None,
         epoch_log_buffer.append((epoch, _batch_mean_loss, val_loss))
         if not epoch % 25:
             print(epoch, _batch_mean_loss, val_loss)
+        if not epoch % 100:
             if max_sample_val is not None:
                 predicted_inv = scalers[4].inverse_transform(max_sample_val['predicted'].reshape(1, -1))
                 actual_inv = max_sample_val['actual'].copy().reshape(1, -1)
                 actual_inv[actual_inv == -1] = np.nan
                 actual_inv = scalers[4].inverse_transform(actual_inv)
-                print(f"Max loss sample in val set (epoch {epoch}): Number={int(max_sample_val['id'].flatten()[0])}, loss={max_sample_val['loss']:.6f}")
-                print(f"Predicted (original): {predicted_inv.flatten()}")
-                print(f"Actual (original): {actual_inv.flatten()}")
+                print(f"Max loss sample {int(max_sample_val['id'].flatten()[0])}, loss={max_sample_val['loss']:.6f}")
+                print(f"Predicted: {predicted_inv.flatten()}")
+                print(f"Actual: {actual_inv.flatten()}")
             if min_sample_val is not None:
                 predicted_inv = scalers[4].inverse_transform(min_sample_val['predicted'].reshape(1, -1))
                 actual_inv = min_sample_val['actual'].copy().reshape(1, -1)
                 actual_inv[actual_inv == -1] = np.nan
                 actual_inv = scalers[4].inverse_transform(actual_inv)
-                print(f"Min loss sample in val set (epoch {epoch}): Number={int(min_sample_val['id'].flatten()[0])}, loss={min_sample_val['loss']:.6f}")
-                print(f"Predicted (original): {predicted_inv.flatten()}")
-                print(f"Actual (original): {actual_inv.flatten()}")
+                print(f"Min loss sample {int(min_sample_val['id'].flatten()[0])}, loss={min_sample_val['loss']:.6f}")
+                print(f"Predicted: {predicted_inv.flatten()}")
+                print(f"Actual: {actual_inv.flatten()}")
 
         # if early_stopper.step(val_loss, model):
         #     print(f"[EarlyStopping] Stop at epoch {epoch}")
@@ -429,38 +437,6 @@ def get_model(model = None,
     return model, train_d, val_d, scalers
 
 if __name__ == '__main__':
-    model_list = [
-        ELM_CPrPh().to(device),
-        ELM_C().to(device),
-        ELM_CPh().to(device),
-        ELM_CPr().to(device),
-        FCNN().to(device),
-        FCNN_MSHBranched().to(device),
-        FCNN_FullyBranched().to(device),
-        FCNN_ElemFeat().to(device),
-        FCNN_ElemFeat_MSHBranched().to(device),
-        FCNN_ElemFeat_FullyBranched().to(device),
-        Attention().to(device),
-        Attention_MSHBranched().to(device),
-        Attention_FullyBranched().to(device),
-    ]
-
-    model_names = [
-        'ELM_CPrPh',
-        'ELM_C',
-        'ELM_CPh',
-        'ELM_CPr',
-        'FCNN',
-        'FCNN_MSHBranched',
-        'FCNN_FullyBranched',
-        'FCNN_ElemFeat',
-        'FCNN_ElemFeat_MSHBranched',
-        'FCNN_ElemFeat_FullyBranched',
-        'Attention',
-        'Attention_MSHBranched',
-        'Attention_FullyBranched',
-    ]
-
     for model, model_name in zip(MODEL_LIST, MODEL_NAMES):
         print(f"\nTraining model: {model_name}\n")
         get_model(model,
