@@ -1348,7 +1348,14 @@ class TiAlloyNet(nn.Module):
     def __init__(self):
         super(TiAlloyNet, self).__init__()
 
-        self._n_in_fcnn = N_ELEM + N_PROC_BOOL + N_PROC_SCALAR + N_PHASE_SCALAR
+        self._kernel_size = (1, N_ELEM_FEAT_P1)
+        self.conv1 = nn.Conv2d(in_channels=1, out_channels=N_ELEM_FEAT_P1, kernel_size=self._kernel_size)
+        self.bn_conv1 = nn.BatchNorm2d(N_ELEM_FEAT_P1)
+        self.conv2 = nn.Conv2d(in_channels=1, out_channels=N_ELEM_FEAT_P1, kernel_size=self._kernel_size)
+        self.bn_conv2 = nn.BatchNorm2d(N_ELEM_FEAT_P1)
+        
+        self._n_cnn_out = N_ELEM * N_ELEM_FEAT_P1
+        self._n_in_fcnn = self._n_cnn_out + N_PROC_BOOL + N_PROC_SCALAR + N_PHASE_SCALAR
         self._n_fcnn = N_FC_NERON
         self._n_branch = N_BRANCH_NERON
         
@@ -1390,10 +1397,24 @@ class TiAlloyNet(nn.Module):
                 if m.bias is not None: m.bias.data.zero_()
 
     def forward(self, comp, elem_feature, proc_bool, proc_scalar, phase_scalar):
-        x = torch.cat([comp.reshape(-1, N_ELEM), 
-            proc_bool.reshape(-1, N_PROC_BOOL), 
+        x = torch.cat([comp, elem_feature], dim=-1)
+        residual = x
+        
+        x = self.af(self.bn_conv1(self.conv1(x)))
+        x = x.reshape(-1, 1, N_ELEM, N_ELEM_FEAT_P1)
+        x = self.af(self.bn_conv2(self.conv2(x)))
+        x = x.reshape(-1, 1, N_ELEM, N_ELEM_FEAT_P1)
+        
+        x = x + residual
+        
+        x = x.view(-1, self._n_cnn_out)
+
+        x = torch.cat([
+            x,
+            proc_bool.reshape(-1, N_PROC_BOOL),
             proc_scalar.reshape(-1, N_PROC_SCALAR),
-            phase_scalar.reshape(-1, N_PHASE_SCALAR)], dim=-1)
+            phase_scalar.reshape(-1, N_PHASE_SCALAR)
+        ], dim=-1)
         
         x = self.af(self.bn1(self.fc1(x)))
         out_1 = self.out_1(x)
@@ -1424,19 +1445,10 @@ if __name__ == '__main__':
     )
     
     model_list = [
-        ELM_CPrPh().to(device),
-        ELM_C().to(device),
-        ELM_CPh().to(device),
-        ELM_CPr().to(device),
-        FCNN().to(device),
-        FCNN_MSHBranched().to(device),
-        FCNN_FullyBranched().to(device),
-        FCNN_ElemFeat().to(device),
-        FCNN_ElemFeat_MSHBranched().to(device),
-        FCNN_ElemFeat_FullyBranched().to(device),
-        Attention().to(device),
-        Attention_MSHBranched().to(device),
-        Attention_FullyBranched().to(device),
+        ELM_CPrPh().to(device), ELM_C().to(device), ELM_CPh().to(device), ELM_CPr().to(device),
+        FCNN().to(device), FCNN_MSHBranched().to(device), FCNN_FullyBranched().to(device),
+        FCNN_ElemFeat().to(device), FCNN_ElemFeat_MSHBranched().to(device), FCNN_ElemFeat_FullyBranched().to(device),
+        Attention().to(device), Attention_MSHBranched().to(device), Attention_FullyBranched().to(device),
         TiAlloyNet().to(device)
     ]
     for model in model_list:
