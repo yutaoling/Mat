@@ -18,11 +18,11 @@ from sklearn.metrics import mean_squared_error
 from surrogate_model import *
 
 MODEL_LIST = [
-    ELM_CPrPh().to(device), ELM_C().to(device), ELM_CPh().to(device), ELM_CPr().to(device),
-    FCNN().to(device), FCNN_MSHBranched().to(device), FCNN_FullyBranched().to(device),
-    FCNN_ElemFeat().to(device), FCNN_ElemFeat_MSHBranched().to(device), FCNN_ElemFeat_FullyBranched().to(device),
-    CNN().to(device), CNN_MSHBranched().to(device), CNN_FullyBranched().to(device),
-    Attention().to(device), Attention_MSHBranched().to(device), Attention_FullyBranched().to(device),
+    # ELM_CPrPh().to(device), ELM_C().to(device), ELM_CPh().to(device), ELM_CPr().to(device), ELM_CPrPh_ElemFeat().to(device), ELM_CPrPh_CNN().to(device),
+    # FCNN().to(device), FCNN_MSHBranched().to(device), FCNN_FullyBranched().to(device),
+    # FCNN_ElemFeat().to(device), FCNN_ElemFeat_MSHBranched().to(device), FCNN_ElemFeat_FullyBranched().to(device),
+    # CNN().to(device), CNN_MSHBranched().to(device), CNN_FullyBranched().to(device),
+    # Attention().to(device), Attention_MSHBranched().to(device), Attention_FullyBranched().to(device),
     TiAlloyNet().to(device),
 ]
 
