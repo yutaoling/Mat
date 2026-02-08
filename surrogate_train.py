@@ -227,37 +227,25 @@ def _get_cached_tensors(dtype, device, prop_scaler):
         }
     return _cached_loss_tensors[key]
 
-def MaskedLoss(out, prop, mask, loss_weights, prop_scaler=None):
+def MaskedLoss(out, prop, mask, prop_scaler=None):
     cached = _get_cached_tensors(out.dtype, out.device, prop_scaler)
     scaler_mean = cached['scaler_mean']
     scaler_scale = cached['scaler_scale']
 
-    n_tasks = len(loss_weights)
-    weights = nn.functional.softmax(loss_weights, dim=0) * n_tasks
+    weights = torch.ones(out.shape[1], device=out.device).view(1, -1)
     
-    loss = nn.functional.huber_loss(out, prop, reduction='none', delta=1) * mask
+    loss = nn.functional.huber_loss(out, prop, reduction='none', delta=1) * mask * weights
     
     out_original = out * scaler_scale + scaler_mean
-    constraint_positive = nn.functional.relu(-out_original) * mask
-    constraint_uts_ys = nn.functional.relu(out_original[:, 1] - out_original[:, 2]) * (mask[:, 1] * mask[:, 2])
+    constraint_positive = nn.functional.relu(-out_original) * mask * weights
+    constraint_uts_ys = nn.functional.relu(out_original[:, 1] - out_original[:, 2]) * (mask[:, 1] * mask[:, 2]) * ((weights[0,1] + weights[0,2]) / 2)
     
-    loss_per_sample_task = loss + 10.0 * constraint_positive
-    loss_per_sample_task[:, 1] += constraint_uts_ys.squeeze() * mask[:, 1]
-    loss_per_sample_task[:, 2] += constraint_uts_ys.squeeze() * mask[:, 2]
+    total_loss = loss + 10.0 * constraint_positive
+    num_valid = mask.sum(dim=1).clamp(min=1e-6)
+    mean_loss = total_loss.sum(dim=1) / num_valid + 10.0 * constraint_uts_ys
 
-    task_losses = []
-    for i in range(n_tasks):
-        valid_mask = mask[:, i]
-        m_loss = loss_per_sample_task[:, i].sum() / valid_mask.sum().clamp(min=1e-6)
-        task_losses.append(m_loss)
-    task_losses = torch.stack(task_losses)
-    weighted_loss = torch.sum(task_losses * weights.detach())
-    sample_losses = []
-    for j in range(out.shape[0]):
-        sample_losses.append(sum(loss_per_sample_task[j, i] * weights[i].detach() * mask[j, i] for i in range(n_tasks)))
-    sample_losses = torch.stack(sample_losses)
-   
-    return weighted_loss, task_losses, weights, sample_losses
+    return mean_loss.mean(), mean_loss
+
 
 def train_validate_split(data_tuple, ratio_tuple = (0.95, 0.05)):
     _random_seed = next(iter(seeds))
@@ -283,7 +271,7 @@ def validate(model, val_dl, prop_scaler=None):
             out = model(comp, elem_t, proc_bool, proc_scalar, phase_scalar)
         prop = prop.reshape(*(out.shape))
         mask = mask.reshape(*(out.shape))
-        loss, task_losses, weights_norm, llist = MaskedLoss(out, prop, mask, model.loss_weights, prop_scaler)
+        loss, llist = MaskedLoss(out, prop, mask, prop_scaler)
         total_loss += loss.item() * len(prop)
         total_samples += len(prop)
         all_llist.append(llist)
@@ -361,9 +349,7 @@ def train_a_model(model = None,
     epoch_log_buffer = []
     # early_stopper = EarlyStopping(patience=150,min_delta=1e-4,verbose=True)
     prop_scaler = scalers[4]
-    GN_alpha = 1.5
-    weight_optimizer = torch.optim.Adam([model.loss_weights], lr=1e-3)
-    initial_task_losses = None
+
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         model.optimizer, mode='min', factor=0.5, patience=30
     )
@@ -373,37 +359,10 @@ def train_a_model(model = None,
         _batch_loss_buffer = []
         for id, comp, proc_bool, proc_scalar, phase_scalar, prop, mask, elem_t in train_dl:
             out = model(comp, elem_t, proc_bool, proc_scalar, phase_scalar)
-            loss, task_losses, weights_norm, llist = MaskedLoss(out, prop.reshape(*(out.shape)), mask.reshape(*(out.shape)), model.loss_weights, prop_scaler)
-
-            if initial_task_losses is None:
-                initial_task_losses = task_losses.detach()
+            loss, llist = MaskedLoss(out, prop.reshape(*(out.shape)), mask.reshape(*(out.shape)), prop_scaler)
 
             model.optimizer.zero_grad()
             loss.backward(retain_graph=True)
-
-            shared_weights = model.shared_layer.weight
-            
-            gw = []
-            for i in range(len(task_losses)):
-                grad = torch.autograd.grad(
-                    task_losses[i] * weights_norm[i],
-                    shared_weights,
-                    retain_graph=True,
-                    create_graph=True,
-                )[0]
-                gw.append(torch.norm(grad))
-            gw = torch.stack(gw).to(device)
-
-            loss_ratio = task_losses.detach() / (initial_task_losses + 1e-8)
-            inverse_train_rate = loss_ratio / (loss_ratio.mean())
-            mean_gw = gw.mean().detach()
-            target_gw = mean_gw * (inverse_train_rate ** GN_alpha)
-
-            l_grad = nn.functional.l1_loss(gw, target_gw.detach())
-            weight_optimizer.zero_grad()
-            l_grad.backward()
-            weight_optimizer.step()
-
             model.optimizer.step()
             
             _batch_loss_buffer.append(loss.item())
