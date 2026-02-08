@@ -268,7 +268,7 @@ def validate(model, val_dl, prop_scaler=None):
     for batch in val_dl:
         id, comp, proc_bool, proc_scalar, phase_scalar, prop, mask, elem_t = batch
         with torch.no_grad():
-            out = model(comp, elem_t, proc_bool, proc_scalar, phase_scalar)
+            out = model(comp, elem_t, proc_bool, proc_scalar, phase_scalar, scalers)
         prop = prop.reshape(*(out.shape))
         mask = mask.reshape(*(out.shape))
         loss, llist = MaskedLoss(out, prop, mask, prop_scaler)
@@ -311,32 +311,6 @@ def validate(model, val_dl, prop_scaler=None):
     
     return val_loss, max_sample, min_sample
 
-def Make_Masked_Data(train_data, test_data, rng_seed = seed):
-    train_prop = train_data[5]
-    test_prop = test_data[5]
-    mask_prop = (~np.isnan(train_prop)).mean(axis=0)
-    num_samples = test_prop.shape[0]
-    num_props = mask_prop.shape[0]
-    rng = np.random.default_rng(rng_seed)
-    mask = rng.random((num_samples, num_props)) < mask_prop
-    random_test_mask = None
-    for _ in range(10):# max retry times
-        valid = mask.sum(axis=1)>0
-        if valid.all():
-            random_test_mask = mask.astype(np.float32)
-            break
-        idx = np.where(~valid)[0]
-        mask[idx]=rng.random((len(idx), num_props)) < mask_prop
-    if random_test_mask is None:
-        fallback_idx = np.argmax(mask_prop)
-        random_test_mask = mask.astype(np.float32)
-        invalid_rows = random_test_mask.sum(axis=1) == 0
-        random_test_mask[invalid_rows, fallback_idx] = 1.0
-    test_prop_masked = test_prop.copy()
-    test_prop_masked[random_test_mask==0]=np.nan
-    masked_test_data = (test_data[0], test_data[1], test_data[2], test_data[3], test_data[4], test_prop_masked, test_data[6])
-    return masked_test_data
-
 def train_a_model(model = None,
                     train_d = None,
                     val_d = None,
@@ -358,7 +332,7 @@ def train_a_model(model = None,
         model.train()
         _batch_loss_buffer = []
         for id, comp, proc_bool, proc_scalar, phase_scalar, prop, mask, elem_t in train_dl:
-            out = model(comp, elem_t, proc_bool, proc_scalar, phase_scalar)
+            out = model(comp, elem_t, proc_bool, proc_scalar, phase_scalar, scalers)
             loss, llist = MaskedLoss(out, prop.reshape(*(out.shape)), mask.reshape(*(out.shape)), prop_scaler)
 
             model.optimizer.zero_grad()
@@ -439,8 +413,8 @@ if __name__ == '__main__':
     for model, model_name in zip(MODEL_LIST, MODEL_NAMES):
         print(f"\nTraining model: {model_name}\n")
         get_model(model,
-            f'models/surrogate/model_GN_{model_name}.pth',
+            f'models/surrogate/model_{model_name}.pth',
             f'models/surrogate/data.pth',
             resume=False,
             train=True,
-            save_path=f'logs/surrogate/train_GN_{model_name}.txt')
+            save_path=f'logs/surrogate/train_{model_name}.txt')

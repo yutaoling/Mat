@@ -57,7 +57,7 @@ class ELM_CPrPh(nn.Module):
         super(ELM_CPrPh, self).__init__()
         
         self.fc1 = nn.Linear(N_ELEM + N_PROC_BOOL + N_PROC_SCALAR + N_PHASE_SCALAR, N_FC_NERON)
-        self.fc2 = nn.Linear(N_FC_NERON, 5)
+        self.fc2 = nn.Linear(N_FC_NERON, N_PROP)
         self.af = nn.LeakyReLU(0.2)
       
         self.reset_parameters()
@@ -70,7 +70,7 @@ class ELM_CPrPh(nn.Module):
         self.fc2.weight.data.uniform_(*hidden_init(self.fc2))
         self.fc2.weight.data.uniform_(-3e-3, 3e-3)
 
-    def forward(self, comp, elem_feature, proc_bool, proc_scalar, phase_scalar):
+    def forward(self, comp, elem_feature, proc_bool, proc_scalar, phase_scalar, scalers = None):
         x = torch.cat([comp.reshape(-1, N_ELEM),
             proc_bool.reshape(-1, N_PROC_BOOL),
             proc_scalar.reshape(-1, N_PROC_SCALAR),
@@ -84,7 +84,7 @@ class ELM_C(nn.Module):
         super(ELM_C, self).__init__()
         
         self.fc1 = nn.Linear(N_ELEM, N_FC_NERON)
-        self.fc2 = nn.Linear(N_FC_NERON, 5)
+        self.fc2 = nn.Linear(N_FC_NERON, N_PROP)
         self.af = nn.LeakyReLU(0.2)
 
         self.reset_parameters()
@@ -97,7 +97,7 @@ class ELM_C(nn.Module):
         self.fc2.weight.data.uniform_(*hidden_init(self.fc2))
         self.fc2.weight.data.uniform_(-3e-3, 3e-3)
 
-    def forward(self, comp, elem_feature, proc_bool, proc_scalar, phase_scalar):
+    def forward(self, comp, elem_feature, proc_bool, proc_scalar, phase_scalar, scalers = None):
         x = comp.reshape(-1, N_ELEM)
         x = self.af(self.fc1(x))
         x = self.fc2(x)
@@ -108,7 +108,7 @@ class ELM_CPh(nn.Module):
         super(ELM_CPh, self).__init__()
         
         self.fc1 = nn.Linear(N_ELEM + N_PHASE_SCALAR, N_FC_NERON)
-        self.fc2 = nn.Linear(N_FC_NERON, 5)
+        self.fc2 = nn.Linear(N_FC_NERON, N_PROP)
         self.af = nn.LeakyReLU(0.2)
 
         self.reset_parameters()
@@ -121,7 +121,7 @@ class ELM_CPh(nn.Module):
         self.fc2.weight.data.uniform_(*hidden_init(self.fc2))
         self.fc2.weight.data.uniform_(-3e-3, 3e-3)
 
-    def forward(self, comp, elem_feature, proc_bool, proc_scalar, phase_scalar):
+    def forward(self, comp, elem_feature, proc_bool, proc_scalar, phase_scalar, scalers = None):
         x = torch.cat([comp.reshape(-1, N_ELEM),
             phase_scalar.reshape(-1, N_PHASE_SCALAR)], dim=-1)
         x = self.af(self.fc1(x))
@@ -133,7 +133,7 @@ class ELM_CPr(nn.Module):
         super(ELM_CPr, self).__init__()
         
         self.fc1 = nn.Linear(N_ELEM + N_PROC_BOOL + N_PROC_SCALAR, N_FC_NERON)
-        self.fc2 = nn.Linear(N_FC_NERON, 5)
+        self.fc2 = nn.Linear(N_FC_NERON, N_PROP)
         self.af = nn.LeakyReLU(0.2)
 
         self.reset_parameters()
@@ -146,7 +146,7 @@ class ELM_CPr(nn.Module):
         self.fc2.weight.data.uniform_(*hidden_init(self.fc2))
         self.fc2.weight.data.uniform_(-3e-3, 3e-3)
 
-    def forward(self, comp, elem_feature, proc_bool, proc_scalar, phase_scalar):
+    def forward(self, comp, elem_feature, proc_bool, proc_scalar, phase_scalar, scalers = None):
         x = torch.cat([comp.reshape(-1, N_ELEM),
             proc_bool.reshape(-1, N_PROC_BOOL),
             proc_scalar.reshape(-1, N_PROC_SCALAR)], dim=-1)
@@ -159,7 +159,7 @@ class ELM_ElemFeat(nn.Module):
         super(ELM_ElemFeat, self).__init__()
         
         self.fc1 = nn.Linear(N_ELEM + N_ELEM_FEAT + N_PROC_BOOL + N_PROC_SCALAR + N_PHASE_SCALAR, N_FC_NERON)
-        self.fc2 = nn.Linear(N_FC_NERON, 5)
+        self.fc2 = nn.Linear(N_FC_NERON, N_PROP)
         self.af = nn.LeakyReLU(0.2)
 
         self.reset_parameters()
@@ -172,7 +172,7 @@ class ELM_ElemFeat(nn.Module):
         self.fc2.weight.data.uniform_(*hidden_init(self.fc2))
         self.fc2.weight.data.uniform_(-3e-3, 3e-3)
 
-    def forward(self, comp, elem_feature, proc_bool, proc_scalar, phase_scalar):
+    def forward(self, comp, elem_feature, proc_bool, proc_scalar, phase_scalar, scalers = None):
         mef = torch.sum(comp.squeeze(-1).squeeze(1).unsqueeze(-1) * elem_feature.squeeze(1), dim=1)
         x = torch.cat([comp.reshape(-1, N_ELEM), 
             mef.reshape(-1, N_ELEM_FEAT), 
@@ -198,7 +198,7 @@ class ELM_CNN(nn.Module):
         self._n_fcnn = N_FC_NERON
         
         self.fc1 = nn.Linear(self._n_in_fcnn, self._n_fcnn)
-        self.fc2 = nn.Linear(self._n_fcnn, 5)
+        self.fc2 = nn.Linear(self._n_fcnn, N_PROP)
         self.af = nn.LeakyReLU(0.2)
 
         self.reset_parameters()
@@ -211,7 +211,7 @@ class ELM_CNN(nn.Module):
         self.fc2.weight.data.uniform_(*hidden_init(self.fc2))
         self.fc2.weight.data.uniform_(-3e-3, 3e-3)
 
-    def forward(self, comp, elem_feature, proc_bool, proc_scalar, phase_scalar):
+    def forward(self, comp, elem_feature, proc_bool, proc_scalar, phase_scalar, scalers = None):
         x = torch.cat([comp, elem_feature], dim=-1)
         residual = x
         
@@ -249,7 +249,7 @@ class FCNN(nn.Module):
         self.bn3 = nn.BatchNorm1d(self._n_fcnn)
         self.fc4 = nn.Linear(self._n_fcnn, self._n_fcnn)
         self.bn4 = nn.BatchNorm1d(self._n_fcnn)
-        self.out = nn.Linear(self._n_fcnn, 5)
+        self.out = nn.Linear(self._n_fcnn, N_PROP)
 
         self.af = nn.LeakyReLU(0.2)
         self.dropout = nn.Dropout(0.2)
@@ -272,7 +272,7 @@ class FCNN(nn.Module):
                 if m.weight is not None: m.weight.data.fill_(1.)
                 if m.bias is not None: m.bias.data.zero_()
 
-    def forward(self, comp, elem_feature, proc_bool, proc_scalar, phase_scalar):
+    def forward(self, comp, elem_feature, proc_bool, proc_scalar, phase_scalar, scalers = None):
         
         x = torch.cat([comp.reshape(-1, N_ELEM), 
             proc_bool.reshape(-1, N_PROC_BOOL), 
@@ -337,7 +337,7 @@ class FCNN_MSHBranched(nn.Module):
                 if m.weight is not None: m.weight.data.fill_(1.)
                 if m.bias is not None: m.bias.data.zero_()
 
-    def forward(self, comp, elem_feature, proc_bool, proc_scalar, phase_scalar):
+    def forward(self, comp, elem_feature, proc_bool, proc_scalar, phase_scalar, scalers = None):
         x = torch.cat([comp.reshape(-1, N_ELEM), 
             proc_bool.reshape(-1, N_PROC_BOOL), 
             proc_scalar.reshape(-1, N_PROC_SCALAR),
@@ -421,7 +421,7 @@ class FCNN_FullyBranched(nn.Module):
                 if m.weight is not None: m.weight.data.fill_(1.)
                 if m.bias is not None: m.bias.data.zero_()
 
-    def forward(self, comp, elem_feature, proc_bool, proc_scalar, phase_scalar):
+    def forward(self, comp, elem_feature, proc_bool, proc_scalar, phase_scalar, scalers = None):
         x = torch.cat([comp.reshape(-1, N_ELEM), 
             proc_bool.reshape(-1, N_PROC_BOOL), 
             proc_scalar.reshape(-1, N_PROC_SCALAR),
@@ -469,7 +469,7 @@ class FCNN_ElemFeat(nn.Module):
         self.bn3 = nn.BatchNorm1d(self._n_fcnn)
         self.fc4 = nn.Linear(self._n_fcnn, self._n_fcnn)
         self.bn4 = nn.BatchNorm1d(self._n_fcnn)
-        self.out = nn.Linear(self._n_fcnn, 5)
+        self.out = nn.Linear(self._n_fcnn, N_PROP)
 
         self.af = nn.LeakyReLU(0.2)
         self.dropout = nn.Dropout(0.2)
@@ -492,7 +492,7 @@ class FCNN_ElemFeat(nn.Module):
                 if m.weight is not None: m.weight.data.fill_(1.)
                 if m.bias is not None: m.bias.data.zero_()
 
-    def forward(self, comp, elem_feature, proc_bool, proc_scalar, phase_scalar):
+    def forward(self, comp, elem_feature, proc_bool, proc_scalar, phase_scalar, scalers = None):
         mef = torch.sum(comp.squeeze(-1).squeeze(1).unsqueeze(-1) * elem_feature.squeeze(1), dim=1)
         
         x = torch.cat([comp.reshape(-1, N_ELEM), 
@@ -559,7 +559,7 @@ class FCNN_ElemFeat_MSHBranched(nn.Module):
                 if m.weight is not None: m.weight.data.fill_(1.)
                 if m.bias is not None: m.bias.data.zero_()
 
-    def forward(self, comp, elem_feature, proc_bool, proc_scalar, phase_scalar):
+    def forward(self, comp, elem_feature, proc_bool, proc_scalar, phase_scalar, scalers = None):
         mef = torch.sum(comp.squeeze(-1).squeeze(1).unsqueeze(-1) * elem_feature.squeeze(1), dim=1)
         x = torch.cat([comp.reshape(-1, N_ELEM), 
             mef.reshape(-1, N_ELEM_FEAT), 
@@ -645,7 +645,7 @@ class FCNN_ElemFeat_FullyBranched(nn.Module):
                 if m.weight is not None: m.weight.data.fill_(1.)
                 if m.bias is not None: m.bias.data.zero_()
 
-    def forward(self, comp, elem_feature, proc_bool, proc_scalar, phase_scalar):
+    def forward(self, comp, elem_feature, proc_bool, proc_scalar, phase_scalar, scalers = None):
         mef = torch.sum(comp.squeeze(-1).squeeze(1).unsqueeze(-1) * elem_feature.squeeze(1), dim=1)
         x = torch.cat([comp.reshape(-1, N_ELEM), 
             mef.reshape(-1, N_ELEM_FEAT), 
@@ -697,12 +697,8 @@ class CNN(nn.Module):
         
         self.fc1 = nn.Linear(self._n_in_fcnn, self._n_fcnn)
         self.bn1 = nn.BatchNorm1d(self._n_fcnn)
-        self.fc2 = nn.Linear(self._n_fcnn, self._n_fcnn)
-        self.bn2 = nn.BatchNorm1d(self._n_fcnn)
-        self.out = nn.Linear(self._n_fcnn, 5)
-        
+        self.fc2 = nn.Linear(self._n_fcnn, N_PROP)
         self.af = nn.LeakyReLU(0.2)
-        self.dropout = nn.Dropout(0.2)
 
         self.reset_parameters()
         
@@ -725,7 +721,7 @@ class CNN(nn.Module):
                 if m.bias is not None:
                     m.bias.data.zero_()
     
-    def forward(self, comp, elem_feature, proc_bool, proc_scalar, phase_scalar):
+    def forward(self, comp, elem_feature, proc_bool, proc_scalar, phase_scalar, scalers = None):
         x = torch.cat([comp, elem_feature], dim=-1)
         residual = x
         
@@ -805,7 +801,7 @@ class CNN_MSHBranched(nn.Module):
                 if m.bias is not None:
                     m.bias.data.zero_()
     
-    def forward(self, comp, elem_feature, proc_bool, proc_scalar, phase_scalar):
+    def forward(self, comp, elem_feature, proc_bool, proc_scalar, phase_scalar, scalers = None):
         x = torch.cat([comp, elem_feature], dim=-1)
         residual = x
         
@@ -903,7 +899,7 @@ class CNN_FullyBranched(nn.Module):
                 if m.bias is not None:
                     m.bias.data.zero_()
     
-    def forward(self, comp, elem_feature, proc_bool, proc_scalar, phase_scalar):
+    def forward(self, comp, elem_feature, proc_bool, proc_scalar, phase_scalar, scalers = None):
         x = torch.cat([comp, elem_feature], dim=-1)
         residual = x
         
@@ -1004,7 +1000,7 @@ class Attention(nn.Module):
 
         self.branch_dim = N_BRANCH_NERON
 
-        self.head_x = self._make_head(self.branch_dim, 5)
+        self.head_x = self._make_head(self.branch_dim, N_PROP)
 
         self.lr = LEARNING_RATE        
         self.optimizer = optim.Adam(self.parameters(), lr=self.lr, weight_decay=1e-4)
@@ -1025,7 +1021,7 @@ class Attention(nn.Module):
             nn.Linear(hidden_dim, output_dim),
         )
 
-    def forward(self, comp, elem_feature, proc_bool, proc_scalar, phase_scalar):
+    def forward(self, comp, elem_feature, proc_bool, proc_scalar, phase_scalar, scalers = None):
         batch_size = comp.size(0)
         
         comp_sq = comp.squeeze(-1).squeeze(1)
@@ -1060,7 +1056,7 @@ class Attention(nn.Module):
 
         return x
     
-    def get_attention_weights(self, comp, elem_feature, proc_bool, proc_scalar, phase_scalar):
+    def get_attention_weights(self, comp, elem_feature, proc_bool, proc_scalar, phase_scalar, scalers = None):
         self.eval()
         with torch.no_grad():
             comp_sq = comp.squeeze(-1).squeeze(1)
@@ -1157,7 +1153,7 @@ class Attention_MSHBranched(nn.Module):
             nn.Linear(hidden_dim, output_dim),
         )
 
-    def forward(self, comp, elem_feature, proc_bool, proc_scalar, phase_scalar):
+    def forward(self, comp, elem_feature, proc_bool, proc_scalar, phase_scalar, scalers = None):
         batch_size = comp.size(0)
         
         comp_sq = comp.squeeze(-1).squeeze(1)
@@ -1196,7 +1192,7 @@ class Attention_MSHBranched(nn.Module):
 
         return out
     
-    def get_attention_weights(self, comp, elem_feature, proc_bool, proc_scalar, phase_scalar):
+    def get_attention_weights(self, comp, elem_feature, proc_bool, proc_scalar, phase_scalar, scalers = None):
         self.eval()
         with torch.no_grad():
             comp_sq = comp.squeeze(-1).squeeze(1)
@@ -1295,7 +1291,7 @@ class Attention_FullyBranched(nn.Module):
             nn.Linear(hidden_dim, output_dim),
         )
 
-    def forward(self, comp, elem_feature, proc_bool, proc_scalar, phase_scalar):
+    def forward(self, comp, elem_feature, proc_bool, proc_scalar, phase_scalar, scalers = None):
         batch_size = comp.size(0)
         
         comp_sq = comp.squeeze(-1).squeeze(1)
@@ -1336,7 +1332,7 @@ class Attention_FullyBranched(nn.Module):
 
         return out
     
-    def get_attention_weights(self, comp, elem_feature, proc_bool, proc_scalar, phase_scalar):
+    def get_attention_weights(self, comp, elem_feature, proc_bool, proc_scalar, phase_scalar, scalers = None):
         self.eval()
         with torch.no_grad():
             comp_sq = comp.squeeze(-1).squeeze(1)
@@ -1404,7 +1400,7 @@ class TiAlloyNet(nn.Module):
                 if m.weight is not None: m.weight.data.fill_(1.)
                 if m.bias is not None: m.bias.data.zero_()
 
-    def forward(self, comp, elem_feature, proc_bool, proc_scalar, phase_scalar):
+    def forward(self, comp, elem_feature, proc_bool, proc_scalar, phase_scalar, scalers = None):
         x = torch.cat([comp, elem_feature], dim=-1)
         residual = x
         
@@ -1461,4 +1457,3 @@ if __name__ == '__main__':
     ]
     for model in model_list:
         print(f"{model(*test_input).size()}")
-    
