@@ -580,6 +580,15 @@ class Attention(nn.Module):
             self.layer4 = self._make_head(self.branch_dim, 1)
             self.layer5 = self._make_head(self.branch_dim, 1)
 
+        if self.mask_mode == 'learned':
+            self.missing_proc_bool   = nn.Parameter(torch.zeros(N_PROC_BOOL))
+            self.missing_proc_scalar = nn.Parameter(torch.zeros(N_PROC_SCALAR))
+            
+        elif self.mask_mode in ['mean_dropout', 'sample_dropout']:
+            self.masked_layer = MaskedInputLayer(
+                use_random_sample=(self.mask_mode == 'sample_dropout')
+            )
+
         self.lr = LEARNING_RATE        
         self.optimizer = optim.Adam(self.parameters(), lr=self.lr, weight_decay=1e-4)
 
@@ -601,6 +610,30 @@ class Attention(nn.Module):
 
     def forward(self, comp, elem_feat, proc_bool, proc_scalar, phase_scalar, proc_bool_mask, proc_scalar_mask, scalers = None):
         batch_size = comp.size(0)
+
+        proc_bool = proc_bool.reshape(batch_size, -1)
+        proc_scalar = proc_scalar.reshape(batch_size, -1)
+        phase_scalar = phase_scalar.reshape(batch_size, -1)
+        proc_bool_mean = torch.tensor(
+            scalers[1].mean_ if scalers else np.zeros(N_PROC_BOOL),
+            dtype=torch.float32, device=comp.device
+        )
+        proc_scalar_mean = torch.tensor(
+            scalers[2].mean_ if scalers else np.zeros(N_PROC_SCALAR),
+            dtype=torch.float32, device=comp.device
+        )
+        if self.mask_mode == 'learned':
+            if proc_bool_mask is not None:
+                mask = proc_bool_mask.reshape(batch_size, -1)
+                proc_bool = proc_bool * mask + (1 - mask) * self.missing_proc_bool.expand(batch_size, -1)
+            if proc_scalar_mask is not None:
+                mask = proc_scalar_mask.reshape(batch_size, -1)
+                proc_scalar = proc_scalar * mask + (1 - mask) * self.missing_proc_scalar.expand(batch_size, -1)
+        elif self.mask_mode in ['mean_dropout', 'sample_dropout']:
+            proc_bool_mask_resh = proc_bool_mask.reshape(batch_size, -1) if proc_bool_mask is not None else None
+            proc_bool = self.masked_layer(proc_bool, proc_bool_mask_resh, proc_bool_mean)
+            proc_scalar_mask_resh = proc_scalar_mask.reshape(batch_size, -1) if proc_scalar_mask is not None else None
+            proc_scalar = self.masked_layer(proc_scalar, proc_scalar_mask_resh, proc_scalar_mean)
         
         comp_sq = comp.squeeze(-1).squeeze(1)
         feat_sq = elem_feat.squeeze(1)
@@ -622,9 +655,9 @@ class Attention(nn.Module):
         attn_emb = torch.sum(comp_weights * attn_out, dim=1)
         
         proc_phase = torch.cat([
-            proc_bool.reshape(batch_size, -1), 
-            proc_scalar.reshape(batch_size, -1),
-            phase_scalar.reshape(batch_size, -1)
+            proc_bool, 
+            proc_scalar,
+            phase_scalar
         ], dim=-1)
         
         x = torch.cat([base_emb, attn_emb, proc_phase], dim=-1)
@@ -666,7 +699,7 @@ class Attention(nn.Module):
         name = "Attention"
         if self.branch_mode != 'None':
             name += f'_{self.branch_mode}'
-        name += self.mask_mode
+        name += f'_{self.mask_mode}'
         return name
 
 
