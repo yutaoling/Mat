@@ -17,25 +17,6 @@ from sklearn.metrics import mean_squared_error
 
 from surrogate_model import *
 
-MODEL_LIST = [
-    ELM_CPrPh().to(device), ELM_C().to(device), ELM_CPh().to(device), ELM_CPr().to(device), 
-    ELM_ElemFeat().to(device), ELM_CNN().to(device),
-    FCNN().to(device), FCNN_MSHBranched().to(device), FCNN_FullyBranched().to(device),
-    FCNN_ElemFeat().to(device), FCNN_ElemFeat_MSHBranched().to(device), FCNN_ElemFeat_FullyBranched().to(device),
-    CNN().to(device), CNN_MSHBranched().to(device), CNN_FullyBranched().to(device),
-    Attention().to(device), Attention_MSHBranched().to(device), Attention_FullyBranched().to(device),
-    TiAlloyNet().to(device),
-]
-
-MODEL_NAMES = [
-    'ELM_CPrPh', 'ELM_C', 'ELM_CPh', 'ELM_CPr', 
-    'ELM_ElemFeat', 'ELM_CNN',
-    'FCNN', 'FCNN_MSHBranched', 'FCNN_FullyBranched',
-    'FCNN_ElemFeat', 'FCNN_ElemFeat_MSHBranched', 'FCNN_ElemFeat_FullyBranched',
-    'CNN', 'CNN_MSHBranched', 'CNN_FullyBranched',
-    'Attention', 'Attention_MSHBranched', 'Attention_FullyBranched',
-    'TiAlloyNet',
-]
 
 def set_seed(seed):
     random.seed(seed)
@@ -75,13 +56,51 @@ def load_data():
 
     elem_feature = pd.read_excel('data/elemental_features.xlsx')
     elem_feature = elem_feature[comp_labels].to_numpy()
-    d = (id_data, comp_data, proc_bool_data, proc_scalar_data, phase_scalar_data, prop_data, elem_feature,)
+
+    comp_data = np.nan_to_num(comp_data, nan=0)
+    proc_bool_data = np.nan_to_num(proc_bool_data, nan=0)
+    proc_scalar_data = np.nan_to_num(proc_scalar_data, nan=0)
+    phase_scalar_data = np.nan_to_num(phase_scalar_data, nan=0)
+    prop_data = np.nan_to_num(prop_data, nan=0)
+
+    proc_bool_mask = np.ones_like(proc_bool_data, dtype=bool)
+    proc_scalar_mask = np.ones_like(proc_scalar_data, dtype=bool)
+    prop_mask = np.ones_like(prop_data, dtype=bool)
+    
+    for i in range(len(proc_bool_data)):
+        row_bool = proc_bool_data[i]
+        row_scalar = proc_scalar_data[i]
+        
+        if row_bool[0] == 0 and row_bool[1] == 0:
+            proc_bool_mask[i, 0:2] = False
+            proc_scalar_mask[i, 0:2] = False
+        
+        if row_scalar[0] == 0:
+            proc_scalar_mask[i, 0] = False
+        if row_bool[1] == 1 and row_scalar[1] == 0:
+            proc_scalar_mask[i, 1] = False
+        
+        if row_scalar[2] != 0 and row_scalar[3] == 0:
+            proc_scalar_mask[i, 3] = False
+        if np.sum(row_bool[2:5]) == 0:
+            proc_bool_mask[i, 2:5] = False
+        
+        if row_scalar[4] != 0 and row_scalar[5] == 0:
+            proc_scalar_mask[i, 5] = False
+        if np.sum(row_bool[5:8]) == 0:
+            proc_bool_mask[i, 5:8] = False
+
+        for j in range(len(prop_data[i])):
+            if prop_data[i, j] == 0:
+                prop_mask[i, j] = False
+
+    d = (id_data, comp_data, proc_bool_data, proc_scalar_data, phase_scalar_data, prop_data, elem_feature, proc_bool_mask, proc_scalar_mask, prop_mask,)
 
     return d
 
 def fit_transform(data_tuple, scalers = None):
+    id_data, comp_data, proc_bool_data, proc_scalar_data, phase_scalar_data, prop_data, elem_feature, proc_bool_mask, proc_scalar_mask, prop_mask = data_tuple
     if scalers is not None:
-        id_data, comp_data, proc_bool_data, proc_scalar_data, phase_scalar_data, prop_data, elem_feature = data_tuple
         comp_data = scalers[0].transform(comp_data)
         proc_bool_data = scalers[1].transform(proc_bool_data)
         proc_scalar_data = scalers[2].transform(proc_scalar_data)
@@ -89,14 +108,14 @@ def fit_transform(data_tuple, scalers = None):
         prop_data = scalers[4].transform(prop_data)
         elem_feature = scalers[5].transform(elem_feature.T)
         return (
-            (id_data, comp_data, proc_bool_data, proc_scalar_data, phase_scalar_data, prop_data, elem_feature,),
+            (id_data, comp_data, proc_bool_data, proc_scalar_data, phase_scalar_data, prop_data, elem_feature, proc_bool_mask, proc_scalar_mask, prop_mask,),
             scalers,
         )
 
     else:
-        id_data, comp_data, proc_bool_data, proc_scalar_data, phase_scalar_data, prop_data, elem_feature = data_tuple
+        id_data, comp_data, proc_bool_data, proc_scalar_data, phase_scalar_data, prop_data, elem_feature, proc_bool_mask, proc_scalar_mask, prop_mask = data_tuple
         comp_scaler, proc_bool_scaler, proc_scalar_scaler, phase_scalar_scaler, prop_scaler, elem_feature_scaler = \
-            [StandardScaler() for _ in range(len(data_tuple)-1)]
+            [StandardScaler() for _ in range(6)]
         
         comp_data = comp_scaler.fit_transform(comp_data)
         proc_bool_data = proc_bool_scaler.fit_transform(proc_bool_data)
@@ -106,7 +125,7 @@ def fit_transform(data_tuple, scalers = None):
         elem_feature = elem_feature_scaler.fit_transform(elem_feature.T)
 
         return (
-            (id_data, comp_data, proc_bool_data, proc_scalar_data, phase_scalar_data, prop_data, elem_feature,),
+            (id_data, comp_data, proc_bool_data, proc_scalar_data, phase_scalar_data, prop_data, elem_feature, proc_bool_mask, proc_scalar_mask, prop_mask,),
             (comp_scaler, proc_bool_scaler, proc_scalar_scaler, phase_scalar_scaler, prop_scaler, elem_feature_scaler,),
         )
 
@@ -142,7 +161,9 @@ class CustomDataset(Dataset):
         self.phase_scalar = self.data_tuple[4]
         self.prop = self.data_tuple[5]
 
-        self.mask = ~np.isnan(self.prop)
+        self.proc_bool_mask = self.data_tuple[7]
+        self.proc_scalar_mask = self.data_tuple[8]
+        self.prop_mask = self.data_tuple[9]
         
     def __len__(self):
         return len(self.comp)
@@ -153,29 +174,30 @@ class CustomDataset(Dataset):
         _proc_bool = self.proc_bool[idx]
         _proc_scalar = self.proc_scalar[idx].copy()
         _phase_scalar = self.phase_scalar[idx].copy()
-        _prop = self.prop[idx]
-        _mask = self.mask[idx]
+        _prop = self.prop[idx].copy()
+        _proc_bool_mask = self.proc_bool_mask[idx]
+        _proc_scalar_mask = self.proc_scalar_mask[idx]
+        _prop_mask = self.prop_mask[idx]
 
         if self.augment:
             noise_comp = np.random.normal(0,self.noise_std,_comp.shape)
             _comp += noise_comp
             noise_proc = np.random.normal(0, self.noise_std, _proc_scalar.shape)
-            _proc_scalar += noise_proc
+            _proc_scalar += noise_proc * _proc_scalar_mask
             noise_phase = np.random.normal(0, self.noise_std, _phase_scalar.shape)
             _phase_scalar += noise_phase
 
-        _prop = np.nan_to_num(_prop, nan=-1)
-        
-        return _id, _comp, _proc_bool, _proc_scalar, _phase_scalar, _prop, _mask
+        return _id, _comp, _proc_bool, _proc_scalar, _phase_scalar, _prop, _proc_bool_mask, _proc_scalar_mask, _prop_mask
 
 def get_dataloader(data_tuple, batch_size = 16, augment = False) -> DataLoader:
-    id_data, comp_data, proc_bool_data, proc_scalar_data, phase_scalar_data, prop_data, elem_feature = data_tuple
-    dataset = CustomDataset((id_data, comp_data, proc_bool_data, proc_scalar_data, phase_scalar_data, prop_data,), None, augment=augment)
+    id_data, comp_data, proc_bool_data, proc_scalar_data, phase_scalar_data, prop_data, \
+        elem_feature, proc_bool_mask, proc_scalar_mask, prop_mask = data_tuple
+    dataset = CustomDataset(data_tuple, None, augment=augment)
 
     _elem_feature_base = torch.tensor(elem_feature, dtype=torch.float32, device=device).reshape(1, 1, *elem_feature.shape)
 
     def _collate_fn(batch):
-        id, comp, proc_bool, proc_scalar, phase_scalar, prop, mask = zip(*batch)
+        id, comp, proc_bool, proc_scalar, phase_scalar, prop, proc_bool_mask, proc_scalar_mask, prop_mask = zip(*batch)
         bs = len(comp)
         
         id_t = torch.tensor(np.vstack(id), dtype=torch.float32, device=device).reshape(bs, 1, -1, 1)
@@ -184,11 +206,13 @@ def get_dataloader(data_tuple, batch_size = 16, augment = False) -> DataLoader:
         proc_scalar_t = torch.tensor(np.vstack(proc_scalar), dtype=torch.float32, device=device).reshape(bs, 1, -1, 1)
         phase_scalar_t = torch.tensor(np.vstack(phase_scalar), dtype=torch.float32, device=device).reshape(bs, 1, -1, 1)
         prop_t = torch.tensor(np.vstack(prop), dtype=torch.float32, device=device).reshape(bs, 1, -1, 1)
-        mask_t = torch.tensor(np.vstack(mask), dtype=torch.float32, device=device).reshape(bs, 1, -1, 1)
+        proc_bool_mask_t = torch.tensor(np.vstack(proc_bool_mask), dtype=torch.float32, device=device).reshape(bs, 1, -1, 1)
+        proc_scalar_mask_t = torch.tensor(np.vstack(proc_scalar_mask), dtype=torch.float32, device=device).reshape(bs, 1, -1, 1)
+        prop_mask_t = torch.tensor(np.vstack(prop_mask), dtype=torch.float32, device=device).reshape(bs, 1, -1, 1)
         
         elem_t = _elem_feature_base.expand(bs, 1, *elem_feature.shape)
 
-        return id_t, comp_t, proc_bool_t, proc_scalar_t, phase_scalar_t, prop_t, mask_t, elem_t
+        return id_t, comp_t, proc_bool_t, proc_scalar_t, phase_scalar_t, prop_t, elem_t, proc_bool_mask_t, proc_scalar_mask_t, prop_mask_t
 
     return DataLoader(dataset, batch_size=batch_size, collate_fn=_collate_fn, shuffle=augment)
 
@@ -249,14 +273,20 @@ def MaskedLoss(out, prop, mask, prop_scaler=None):
 
 def train_validate_split(data_tuple, ratio_tuple = (0.95, 0.05)):
     _random_seed = next(iter(seeds))
-    id_data, comp_data, proc_bool_data, proc_scalar_data, phase_scalar_data, prop_data, elem_feature = data_tuple
+    id_data, comp_data, proc_bool_data, proc_scalar_data, phase_scalar_data, prop_data, \
+        elem_feature, proc_bool_mask, proc_scalar_mask, prop_mask = data_tuple
     _ratio_1 = sum(ratio_tuple[1:]) / sum(ratio_tuple)
-    id_train, id_val, comp_train, comp_val, proc_bool_train, proc_bool_val, proc_scalar_train, proc_scalar_val, phase_scalar_train, phase_scalar_val, prop_train, prop_val = \
-        train_test_split(id_data, comp_data, proc_bool_data, proc_scalar_data, phase_scalar_data, prop_data, test_size = _ratio_1, random_state = _random_seed)
-    return (id_train, comp_train, proc_bool_train, proc_scalar_train, phase_scalar_train, prop_train, elem_feature,), \
-            (id_val, comp_val, proc_bool_val, proc_scalar_val, phase_scalar_val, prop_val, elem_feature,)
+    id_train, id_val, comp_train, comp_val, proc_bool_train, proc_bool_val, proc_scalar_train, proc_scalar_val, \
+        phase_scalar_train, phase_scalar_val, prop_train, prop_val, \
+        proc_bool_mask_train, proc_bool_mask_val, proc_scalar_mask_train, proc_scalar_mask_val, prop_mask_train, prop_mask_val = \
+        train_test_split(id_data, comp_data, proc_bool_data, proc_scalar_data, phase_scalar_data, \
+            prop_data, proc_bool_mask, proc_scalar_mask, prop_mask, test_size = _ratio_1, random_state = _random_seed)
+    return (id_train, comp_train, proc_bool_train, proc_scalar_train, phase_scalar_train, prop_train, \
+        elem_feature, proc_bool_mask_train, proc_scalar_mask_train, prop_mask), \
+            (id_val, comp_val, proc_bool_val, proc_scalar_val, phase_scalar_val, prop_val, \
+                elem_feature, proc_bool_mask_val, proc_scalar_mask_val, prop_mask_val)
 
-def validate(model, val_dl, prop_scaler=None):
+def validate(model, val_dl, scalers=None, prop_scaler=None):
     model.eval()
     total_loss = 0.0
     total_samples = 0
@@ -266,18 +296,18 @@ def validate(model, val_dl, prop_scaler=None):
     all_mask = []
     all_id = []
     for batch in val_dl:
-        id, comp, proc_bool, proc_scalar, phase_scalar, prop, mask, elem_t = batch
+        id, comp, proc_bool, proc_scalar, phase_scalar, prop, elem_feat, proc_bool_mask, proc_scalar_mask, prop_mask = batch
         with torch.no_grad():
-            out = model(comp, elem_t, proc_bool, proc_scalar, phase_scalar, scalers)
+            out = model(comp, elem_feat, proc_bool, proc_scalar, phase_scalar, proc_bool_mask, proc_scalar_mask, scalers)
         prop = prop.reshape(*(out.shape))
-        mask = mask.reshape(*(out.shape))
-        loss, llist = MaskedLoss(out, prop, mask, prop_scaler)
+        prop_mask = prop_mask.reshape(*(out.shape))
+        loss, llist = MaskedLoss(out, prop, prop_mask, prop_scaler)
         total_loss += loss.item() * len(prop)
         total_samples += len(prop)
         all_llist.append(llist)
         all_out.append(out)
         all_prop.append(prop)
-        all_mask.append(mask)
+        all_mask.append(prop_mask)
         all_id.append(id)
     
     val_loss = total_loss / total_samples
@@ -331,9 +361,9 @@ def train_a_model(model = None,
     for epoch in range(num_training_epochs):
         model.train()
         _batch_loss_buffer = []
-        for id, comp, proc_bool, proc_scalar, phase_scalar, prop, mask, elem_t in train_dl:
-            out = model(comp, elem_t, proc_bool, proc_scalar, phase_scalar, scalers)
-            loss, llist = MaskedLoss(out, prop.reshape(*(out.shape)), mask.reshape(*(out.shape)), prop_scaler)
+        for id, comp, proc_bool, proc_scalar, phase_scalar, prop, elem_feat, proc_bool_mask, proc_scalar_mask, prop_mask in train_dl:
+            out = model(comp, elem_feat, proc_bool, proc_scalar, phase_scalar, proc_bool_mask, proc_scalar_mask, scalers)
+            loss, llist = MaskedLoss(out, prop.reshape(*(out.shape)), prop_mask.reshape(*(out.shape)), prop_scaler)
 
             model.optimizer.zero_grad()
             loss.backward(retain_graph=True)
@@ -342,7 +372,7 @@ def train_a_model(model = None,
             _batch_loss_buffer.append(loss.item())
         
         _batch_mean_loss = np.mean(_batch_loss_buffer)
-        val_loss, max_sample_val, min_sample_val = validate(model, val_dl, prop_scaler)
+        val_loss, max_sample_val, min_sample_val = validate(model, val_dl, scalers, prop_scaler)
         
         scheduler.step(val_loss)
         epoch_log_buffer.append((epoch, _batch_mean_loss, val_loss))
@@ -352,7 +382,7 @@ def train_a_model(model = None,
             if max_sample_val is not None:
                 predicted_inv = scalers[4].inverse_transform(max_sample_val['predicted'].reshape(1, -1))
                 actual_inv = max_sample_val['actual'].copy().reshape(1, -1)
-                actual_inv[actual_inv == -1] = np.nan
+                actual_inv[actual_inv == 0] = np.nan
                 actual_inv = scalers[4].inverse_transform(actual_inv)
                 print(f"Max loss sample {int(max_sample_val['id'].flatten()[0])}, loss={max_sample_val['loss']:.6f}")
                 print(f"Predicted: {predicted_inv.flatten()}")
@@ -360,7 +390,7 @@ def train_a_model(model = None,
             if min_sample_val is not None:
                 predicted_inv = scalers[4].inverse_transform(min_sample_val['predicted'].reshape(1, -1))
                 actual_inv = min_sample_val['actual'].copy().reshape(1, -1)
-                actual_inv[actual_inv == -1] = np.nan
+                actual_inv[actual_inv == 0] = np.nan
                 actual_inv = scalers[4].inverse_transform(actual_inv)
                 print(f"Min loss sample {int(min_sample_val['id'].flatten()[0])}, loss={min_sample_val['loss']:.6f}")
                 print(f"Predicted: {predicted_inv.flatten()}")
@@ -386,14 +416,15 @@ def get_model(model = None,
               resume = False,
               train = True,
               save_path=None,):
-    if not os.path.exists(data_path):
+    try:
+        train_d, val_d, scalers = joblib.load(data_path)
+        assert False
+    except:
         d = load_data()
         d = filter_activated_data(d, activated_value=1)
         d, scalers = fit_transform(d)
         train_d, val_d = train_validate_split(d, (0.9, 0.1))
         joblib.dump((train_d, val_d, scalers), data_path)
-    else:
-        train_d, val_d, scalers = joblib.load(data_path)
 
     if resume:
         model.load_state_dict(torch.load(model_path, map_location=device))
@@ -410,11 +441,19 @@ def get_model(model = None,
     return model, train_d, val_d, scalers
 
 if __name__ == '__main__':
-    for model, model_name in zip(MODEL_LIST, MODEL_NAMES):
-        print(f"\nTraining model: {model_name}\n")
-        get_model(model,
-            f'models/surrogate/model_{model_name}.pth',
-            f'models/surrogate/data.pth',
-            resume=False,
-            train=True,
-            save_path=f'logs/surrogate/train_{model_name}.txt')
+    mask_modes = ['zero', 'learned', 'mean_dropout', 'sample_dropout']
+    for mask_mode in mask_modes:
+        for model in MODEL_LIST(mask_mode = mask_mode):
+            model_name = model.get_name()
+            print(f"\nTraining model: {model_name}\n")
+            model_dir = f'models/surrogate'
+            log_dir = f'logs/surrogate'
+            os.makedirs(model_dir, exist_ok=True)
+            os.makedirs(log_dir, exist_ok=True)
+            
+            get_model(model,
+                f'{model_dir}/model_{model_name}.pth',
+                f'{model_dir}/data.pth',
+                resume=False,
+                train=True,
+                save_path=f'{log_dir}/train_{model_name}.txt')
