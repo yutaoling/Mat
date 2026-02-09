@@ -666,6 +666,7 @@ class Attention(nn.Module):
         name = "Attention"
         if self.branch_mode != 'None':
             name += f'_{self.branch_mode}'
+        name += self.mask_mode
         return name
 
 

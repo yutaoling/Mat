@@ -418,7 +418,6 @@ def get_model(model = None,
               save_path=None,):
     try:
         train_d, val_d, scalers = joblib.load(data_path)
-        assert False
     except:
         d = load_data()
         d = filter_activated_data(d, activated_value=1)
@@ -435,7 +434,7 @@ def get_model(model = None,
             val_d = val_d,
             scalers = scalers,
             save_path=save_path,
-            num_training_epochs=1000)
+            num_training_epochs=1)
         torch.save(model.state_dict(), model_path)
     
     return model, train_d, val_d, scalers
