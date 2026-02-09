@@ -378,20 +378,20 @@ def train_a_model(model = None,
         epoch_log_buffer.append((epoch, _batch_mean_loss, val_loss))
         if not epoch % 25:
             print(epoch, _batch_mean_loss, val_loss)
-        if not epoch % 100 and False:
+        if not epoch % 100:
             if max_sample_val is not None:
                 predicted_inv = scalers[4].inverse_transform(max_sample_val['predicted'].reshape(1, -1))
                 actual_inv = max_sample_val['actual'].copy().reshape(1, -1)
-                actual_inv[actual_inv == 0] = np.nan
                 actual_inv = scalers[4].inverse_transform(actual_inv)
+                actual_inv[actual_inv < 0.1] = np.nan
                 print(f"Max loss sample {int(max_sample_val['id'].flatten()[0])}, loss={max_sample_val['loss']:.6f}")
                 print(f"Predicted: {predicted_inv.flatten()}")
                 print(f"Actual: {actual_inv.flatten()}")
             if min_sample_val is not None:
                 predicted_inv = scalers[4].inverse_transform(min_sample_val['predicted'].reshape(1, -1))
                 actual_inv = min_sample_val['actual'].copy().reshape(1, -1)
-                actual_inv[actual_inv == 0] = np.nan
                 actual_inv = scalers[4].inverse_transform(actual_inv)
+                actual_inv[actual_inv < 0.1] = np.nan
                 print(f"Min loss sample {int(min_sample_val['id'].flatten()[0])}, loss={min_sample_val['loss']:.6f}")
                 print(f"Predicted: {predicted_inv.flatten()}")
                 print(f"Actual: {actual_inv.flatten()}")

@@ -12,8 +12,6 @@ def surrogate_compare():
     index = 0
     
     train_d, val_d, scalers = joblib.load('models/surrogate/data.pth')
-    val_dl = get_dataloader(val_d, batch_size=len(val_d[0]), augment=False)
-    id, comp, proc_bool, proc_scalar, phase_scalar, prop, elem_feat, proc_bool_mask, proc_scalar_mask, prop_mask = next(iter(val_dl))
     mask_modes = ['zero', 'learned', 'mean_dropout', 'sample_dropout']
     for mask_mode in mask_modes:
         for model in MODEL_LIST(mask_mode = mask_mode):
@@ -22,20 +20,32 @@ def surrogate_compare():
             model_path = f'models/surrogate/model_{model_name}.pth'
             model.load_state_dict(torch.load(model_path, map_location=device, weights_only=True))
             model.eval()
-        
-            with torch.no_grad():
-                pred = model(comp, elem_feat, proc_bool, proc_scalar, phase_scalar, proc_bool_mask, proc_scalar_mask, scalers)
             
-            pred_np = pred.cpu().numpy()
-            prop_np = prop.reshape(pred_np.shape).cpu().numpy()
-            prop_mask_np = prop_mask.reshape(pred_np.shape).cpu().numpy()
-            
-            prop_scaler = scalers[4]
-            pred_original = prop_scaler.inverse_transform(pred_np)
-            
-            prop_np_copy = prop_np.copy()
-            prop_np_copy[prop_np_copy == -1] = np.nan
-            prop_original = prop_scaler.inverse_transform(prop_np_copy)
+            val_dl = get_dataloader(val_d, batch_size=len(val_d[0]), augment=False)
+            prop_original = np.zeros((0, N_PROP))
+            pred_original = np.zeros((0, N_PROP))
+            prop_mask_np = None
+            for batch in val_dl:
+                id_t, comp_t, pb_t, ps_t, ph_t, prop_t, elem_t, pbm_t, psm_t, pm_t = batch
+                with torch.no_grad():
+                    pred = model(comp_t, elem_t, pb_t, ps_t, ph_t, pbm_t, psm_t, scalers)
+
+                pred_np = pred.detach().reshape(-1, N_PROP).cpu().numpy()
+                prop_np = prop_t.detach().reshape(-1, N_PROP).cpu().numpy()
+                prop_mask_np_batch = pm_t.detach().reshape(-1, N_PROP).cpu().numpy()
+
+                prop_scaler = scalers[4]
+                pred_ori = prop_scaler.inverse_transform(pred_np)
+                prop_ori = prop_scaler.inverse_transform(prop_np)
+                prop_ori[prop_ori < 0.1] = np.nan
+
+                pred_original = np.concatenate((pred_original, pred_ori), axis=0)
+                prop_original = np.concatenate((prop_original, prop_ori), axis=0)
+
+                if prop_mask_np is None:
+                    prop_mask_np = prop_mask_np_batch
+                else:
+                    prop_mask_np = np.concatenate((prop_mask_np, prop_mask_np_batch), axis=0)
 
             for i, prop_name in enumerate(prop_names):
                 valid_mask = prop_mask_np[:, i] == 1
@@ -57,7 +67,7 @@ def surrogate_compare():
                 print(f'On {prop_name}: R²={r2:.3f}\tMAE={mae:.1f}\tRMSE={rmse:.1f}\tMAPE={mape:.1f}%\tn={len(y_true)}')
                 results.loc[index] = [model_name, prop_name, r2, mae, rmse, mape, len(y_true)]
                 index += 1
-    results.to_excel('results/surrogate_comparison.xlsx', index=False)
+    # results.to_excel('results/surrogate_comparison.xlsx', index=False)
     
 if __name__ == "__main__":
     surrogate_compare()

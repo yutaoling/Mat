@@ -150,29 +150,40 @@ def plot_prediction_scatter(model=None):
     train_d, val_d, scalers = joblib.load('models/surrogate/data.pth')
     
     if model is None:
-        model_path = os.path.join(PROJECT_ROOT, 'models/surrogate/model_ELM_CPrPh.pth')
-        model = FCNN_NoElemFeat_Model()
-        model.load_state_dict(torch.load(model_path, map_location=device, weights_only=True))
+        model = ELM(mask_mode='zero', Pr=True, Ph=True)
+    model_name = model.get_name()
+    model_path = f'models/surrogate/model_{model_name}.pth'
+    model.load_state_dict(torch.load(model_path, map_location=device))
     
     model = model.to(device)
     model.eval()
     
     val_dl = get_dataloader(val_d, batch_size=len(val_d[0]), augment=False)
-    id, comp, proc_bool, proc_scalar, phase_scalar, prop, elem_feat, proc_bool_mask, proc_scalar_mask, prop_mask = next(iter(val_dl))
-    
-    with torch.no_grad():
-        pred = model(comp, elem_feat, proc_bool, proc_scalar, phase_scalar, proc_bool_mask, proc_scalar_mask, scalers)
-    
-    pred_np = pred.cpu().numpy()
-    prop_np = prop.reshape(pred_np.shape).cpu().numpy()
-    prop_mask_np = prop_mask.reshape(pred_np.shape).cpu().numpy()
-    
-    prop_scaler = scalers[4]
-    pred_original = prop_scaler.inverse_transform(pred_np)
-    
-    prop_np_copy = prop_np.copy()
-    prop_np_copy[prop_np_copy == -1] = np.nan
-    prop_original = prop_scaler.inverse_transform(prop_np_copy)
+    prop_original = np.empty((0, 5))
+    pred_original = np.empty((0, 5))
+    prop_mask_np = None
+    for batch in val_dl:
+        id, comp, proc_bool, proc_scalar, phase_scalar, prop, elem_feat, proc_bool_mask, proc_scalar_mask, prop_mask = batch
+
+        with torch.no_grad():
+            pred = model(comp, elem_feat, proc_bool, proc_scalar, phase_scalar, proc_bool_mask, proc_scalar_mask, scalers)
+
+        pred_np = pred.detach().reshape(-1, N_PROP).cpu().numpy()
+        prop_np = prop.detach().reshape(-1, N_PROP).cpu().numpy()
+        prop_mask_np_batch = prop_mask.detach().reshape(-1, N_PROP).cpu().numpy()
+
+        prop_scaler = scalers[4]
+        pred_ori = prop_scaler.inverse_transform(pred_np)
+        prop_ori = prop_scaler.inverse_transform(prop_np)
+        prop_ori[prop_ori < 0.1] = np.nan
+
+        prop_original = np.concatenate((prop_original, prop_ori), axis=0)
+        pred_original = np.concatenate((pred_original, pred_ori), axis=0)
+
+        if prop_mask_np is None:
+            prop_mask_np = prop_mask_np_batch
+        else:
+            prop_mask_np = np.concatenate((prop_mask_np, prop_mask_np_batch), axis=0)
     
     fig, axes = plt.subplots(1, 5, figsize=(30, 6))
     axes = axes.flatten()
@@ -186,10 +197,6 @@ def plot_prediction_scatter(model=None):
         valid_mask = prop_mask_np[:, i] == 1
         y_true = prop_original[valid_mask, i]
         y_pred = pred_original[valid_mask, i]
-        
-        valid_idx = ~np.isnan(y_true)
-        y_true = y_true[valid_idx]
-        y_pred = y_pred[valid_idx]
         
         if len(y_true) == 0:
             ax.text(0.5, 0.5, 'No valid data', ha='center', va='center', transform=ax.transAxes)
