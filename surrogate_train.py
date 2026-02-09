@@ -434,7 +434,8 @@ def get_model(model = None,
             val_d = val_d,
             scalers = scalers,
             save_path=save_path,
-            num_training_epochs=1)
+            batch_size=128,
+            num_training_epochs=1000)
         torch.save(model.state_dict(), model_path)
     
     return model, train_d, val_d, scalers

@@ -158,14 +158,14 @@ def plot_prediction_scatter(model=None):
     model.eval()
     
     val_dl = get_dataloader(val_d, batch_size=len(val_d[0]), augment=False)
-    _, comp, proc_bool, proc_scalar, phase_scalar, prop, mask, elem_t = next(iter(val_dl))
+    id, comp, proc_bool, proc_scalar, phase_scalar, prop, elem_feat, proc_bool_mask, proc_scalar_mask, prop_mask = next(iter(val_dl))
     
     with torch.no_grad():
-        pred = model(comp, elem_t, proc_bool, proc_scalar, phase_scalar)
+        pred = model(comp, elem_feat, proc_bool, proc_scalar, phase_scalar, proc_bool_mask, proc_scalar_mask, scalers)
     
     pred_np = pred.cpu().numpy()
     prop_np = prop.reshape(pred_np.shape).cpu().numpy()
-    mask_np = mask.reshape(pred_np.shape).cpu().numpy()
+    prop_mask_np = prop_mask.reshape(pred_np.shape).cpu().numpy()
     
     prop_scaler = scalers[4]
     pred_original = prop_scaler.inverse_transform(pred_np)
@@ -174,7 +174,7 @@ def plot_prediction_scatter(model=None):
     prop_np_copy[prop_np_copy == -1] = np.nan
     prop_original = prop_scaler.inverse_transform(prop_np_copy)
     
-    fig, axes = plt.subplots(2, 3, figsize=(15, 10))
+    fig, axes = plt.subplots(1, 5, figsize=(30, 6))
     axes = axes.flatten()
     units = ['GPa', 'MPa', 'MPa', '%', 'HV']
     
@@ -183,7 +183,7 @@ def plot_prediction_scatter(model=None):
             break
         ax = axes[i]
         
-        valid_mask = mask_np[:, i] == 1
+        valid_mask = prop_mask_np[:, i] == 1
         y_true = prop_original[valid_mask, i]
         y_pred = pred_original[valid_mask, i]
         
@@ -230,16 +230,16 @@ def plot_prediction_scatter(model=None):
     plt.suptitle('Validation Set: Actual vs Predicted', fontsize=14, fontweight='bold')
     plt.tight_layout()
     
-    
+    plt.savefig(f'results/scatter_{model.get_name()}.png')
     plt.show()
     
-    return pred_original, prop_original, mask_np
+    return pred_original, prop_original, prop_mask_np
 
 
 
 
 if __name__ == '__main__':
-    plot_training_errors()
+    # plot_training_errors()
     # plot_model_comparison()
     # plot_rl_best_scores()
-    # plot_prediction_scatter(TiAlloyNet())
+    plot_prediction_scatter(ELM(mask_mode = 'zero', Pr = True, Ph = True))
