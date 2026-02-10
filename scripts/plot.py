@@ -158,7 +158,7 @@ def plot_prediction_scatter(model=None):
     model = model.to(device)
     model.eval()
     
-    val_dl = get_dataloader(val_d, batch_size=len(val_d[0]), augment=False)
+    val_dl = get_dataloader(train_d, batch_size=len(train_d[0]), augment=False)
     prop_original = np.empty((0, 5))
     pred_original = np.empty((0, 5))
     prop_mask_np = None
@@ -175,7 +175,7 @@ def plot_prediction_scatter(model=None):
         prop_scaler = scalers[4]
         pred_ori = prop_scaler.inverse_transform(pred_np)
         prop_ori = prop_scaler.inverse_transform(prop_np)
-        prop_ori[prop_ori < 0.1] = np.nan
+        # prop_ori[prop_ori < 0.1] = np.nan
 
         prop_original = np.concatenate((prop_original, prop_ori), axis=0)
         pred_original = np.concatenate((pred_original, pred_ori), axis=0)
@@ -237,7 +237,7 @@ def plot_prediction_scatter(model=None):
     plt.suptitle('Validation Set: Actual vs Predicted', fontsize=14, fontweight='bold')
     plt.tight_layout()
     
-    plt.savefig(f'results/scatter_{model.get_name()}.png')
+    # plt.savefig(f'results/scatter_{model.get_name()}.png')
     plt.show()
     
     return pred_original, prop_original, prop_mask_np
@@ -249,4 +249,4 @@ if __name__ == '__main__':
     # plot_training_errors()
     # plot_model_comparison()
     # plot_rl_best_scores()
-    plot_prediction_scatter(ELM(mask_mode = 'learned', Pr = True, Ph = True))
+    plot_prediction_scatter(FCNN(mask_mode = 'sample_dropout', elem_feat='None', branch_mode='FullyBranched'))

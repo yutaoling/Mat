@@ -67,7 +67,7 @@ def surrogate_compare():
                 print(f'On {prop_name}: R²={r2:.3f}\tMAE={mae:.1f}\tRMSE={rmse:.1f}\tMAPE={mape:.1f}%\tn={len(y_true)}')
                 results.loc[index] = [model_name, prop_name, r2, mae, rmse, mape, len(y_true)]
                 index += 1
-    # results.to_excel('results/surrogate_comparison.xlsx', index=False)
+    results.to_excel('results/surrogate_comparison.xlsx', index=False)
     
 if __name__ == "__main__":
     surrogate_compare()

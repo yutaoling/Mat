@@ -48,6 +48,7 @@ def load_data():
         data[cols_to_numeric] = data[cols_to_numeric].apply(pd.to_numeric, errors='coerce')
 
     id_data = data[id_labels].to_numpy()
+
     comp_data = data[comp_labels].to_numpy()
     proc_bool_data = data[proc_bool_labels].to_numpy()
     proc_scalar_data = data[proc_scalar_labels].to_numpy()
@@ -57,42 +58,15 @@ def load_data():
     elem_feature = pd.read_excel('data/elemental_features.xlsx')
     elem_feature = elem_feature[comp_labels].to_numpy()
 
+    proc_bool_mask = ~np.isnan(proc_bool_data)
+    proc_scalar_mask = ~np.isnan(proc_scalar_data)
+    prop_mask = ~np.isnan(prop_data)
+
     comp_data = np.nan_to_num(comp_data, nan=0)
     proc_bool_data = np.nan_to_num(proc_bool_data, nan=0)
     proc_scalar_data = np.nan_to_num(proc_scalar_data, nan=0)
     phase_scalar_data = np.nan_to_num(phase_scalar_data, nan=0)
     prop_data = np.nan_to_num(prop_data, nan=0)
-
-    proc_bool_mask = np.ones_like(proc_bool_data, dtype=bool)
-    proc_scalar_mask = np.ones_like(proc_scalar_data, dtype=bool)
-    prop_mask = np.ones_like(prop_data, dtype=bool)
-    
-    for i in range(len(proc_bool_data)):
-        row_bool = proc_bool_data[i]
-        row_scalar = proc_scalar_data[i]
-        
-        if row_bool[0] == 0 and row_bool[1] == 0:
-            proc_bool_mask[i, 0:2] = False
-            proc_scalar_mask[i, 0:2] = False
-        
-        if row_scalar[0] == 0:
-            proc_scalar_mask[i, 0] = False
-        if row_bool[1] == 1 and row_scalar[1] == 0:
-            proc_scalar_mask[i, 1] = False
-        
-        if row_scalar[2] != 0 and row_scalar[3] == 0:
-            proc_scalar_mask[i, 3] = False
-        if np.sum(row_bool[2:5]) == 0:
-            proc_bool_mask[i, 2:5] = False
-        
-        if row_scalar[4] != 0 and row_scalar[5] == 0:
-            proc_scalar_mask[i, 5] = False
-        if np.sum(row_bool[5:8]) == 0:
-            proc_bool_mask[i, 5:8] = False
-
-        for j in range(len(prop_data[i])):
-            if prop_data[i, j] == 0:
-                prop_mask[i, j] = False
 
     d = (id_data, comp_data, proc_bool_data, proc_scalar_data, phase_scalar_data, prop_data, elem_feature, proc_bool_mask, proc_scalar_mask, prop_mask,)
 
@@ -418,6 +392,7 @@ def get_model(model = None,
               save_path=None,):
     try:
         train_d, val_d, scalers = joblib.load(data_path)
+        assert False
     except:
         d = load_data()
         d = filter_activated_data(d, activated_value=1)
@@ -441,7 +416,7 @@ def get_model(model = None,
     return model, train_d, val_d, scalers
 
 if __name__ == '__main__':
-    mask_modes = ['zero', 'learned', 'mean_dropout', 'sample_dropout']
+    mask_modes = ['learned', 'zero', 'mean_dropout', 'sample_dropout']
     for mask_mode in mask_modes:
         for model in MODEL_LIST(mask_mode = mask_mode):
             model_name = model.get_name()

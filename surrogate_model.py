@@ -16,8 +16,8 @@ COMP = [
     ]
 PROC_BOOL=[
     'Is_Not_Wrought', 'Is_Wrought',
-    'HT1_Quench','HT1_Air','HT1_Furnace',
-    'HT2_Quench','HT2_Air','HT2_Furnace',
+    'HT1', 'HT1_Quench','HT1_Air','HT1_Furnace',
+    'HT2', 'HT2_Quench','HT2_Air',
     ]
 PROC_SCALAR=['Def_Temp', 'Def_Strain',
     'HT1_Temp','HT1_Time',
@@ -80,6 +80,116 @@ class MaskedInputLayer(nn.Module):
                 x = valid_part + missing_mask * replace_val
         return x
 
+
+class LearnedMaskedProc(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+        self.missing_proc_bool_default = nn.Parameter(torch.zeros(N_PROC_BOOL))
+
+        self.missing_def_default = nn.Parameter(torch.zeros(2))
+        self.missing_def_not_wrought = nn.Parameter(torch.zeros(2))
+        self.missing_def_wrought = nn.Parameter(torch.zeros(2))
+
+        self.missing_ht1_temp_time_default = nn.Parameter(torch.zeros(2))
+        self.missing_ht1_temp_time_off = nn.Parameter(torch.zeros(2))
+        self.missing_ht1_cool_default = nn.Parameter(torch.zeros(3))
+        self.missing_ht1_cool_on = nn.Parameter(torch.zeros(3))
+        self.missing_ht1_cool_off = nn.Parameter(torch.zeros(3))
+
+        self.missing_ht2_temp_time_default = nn.Parameter(torch.zeros(2))
+        self.missing_ht2_temp_time_off = nn.Parameter(torch.zeros(2))
+        self.missing_ht2_cool_default = nn.Parameter(torch.zeros(2))
+        self.missing_ht2_cool_on = nn.Parameter(torch.zeros(2))
+        self.missing_ht2_cool_off = nn.Parameter(torch.zeros(2))
+
+        self.missing_proc_scalar_default = nn.Parameter(torch.zeros(N_PROC_SCALAR))
+        self.missing_phase_scalar_default = nn.Parameter(torch.zeros(N_PHASE_SCALAR))
+
+    @staticmethod
+    def _fill_slice(x, mask, idxs, fill_vals):
+        if idxs is None or len(idxs) == 0:
+            return x
+        m = mask[:, idxs]
+        if fill_vals.ndim == 1:
+            fill_vals = fill_vals.view(1, -1).expand(x.size(0), -1)
+        x[:, idxs] = x[:, idxs] * m + (1 - m) * fill_vals
+        return x
+
+    def forward(self, proc_bool, proc_scalar, phase_scalar, proc_bool_mask, proc_scalar_mask):
+        bs = proc_bool.size(0)
+
+        pb = proc_bool
+        ps = proc_scalar
+        ph = phase_scalar
+
+        pb_mask = proc_bool_mask if proc_bool_mask is not None else torch.ones_like(pb)
+        ps_mask = proc_scalar_mask if proc_scalar_mask is not None else torch.ones_like(ps)
+
+        pb = pb * pb_mask + (1 - pb_mask) * self.missing_proc_bool_default.view(1, -1).expand(bs, -1)
+
+        IS_NOT_WROUGHT = 0
+        IS_WROUGHT = 1
+        HT1 = 2
+        HT1_QUENCH = 3
+        HT1_AIR = 4
+        HT1_FURNACE = 5
+        HT2 = 6
+        HT2_QUENCH = 7
+        HT2_AIR = 8
+
+        DEF_TEMP = 0
+        DEF_STRAIN = 1
+        HT1_TEMP = 2
+        HT1_TIME = 3
+        HT2_TEMP = 4
+        HT2_TIME = 5
+
+        has_not_wrought = pb_mask[:, IS_NOT_WROUGHT] > 0.5
+        has_wrought = pb_mask[:, IS_WROUGHT] > 0.5
+
+        cond_def_default = (~has_not_wrought) & (~has_wrought)
+        cond_def_not_wrought = has_not_wrought & (pb[:, IS_NOT_WROUGHT] > 0.5)
+        cond_def_wrought = has_wrought & (pb[:, IS_WROUGHT] > 0.5)
+
+        def_fill = self.missing_def_default.view(1, -1).expand(bs, -1).clone()
+        def_fill[cond_def_not_wrought] = self.missing_def_not_wrought.view(1, -1)
+        def_fill[cond_def_wrought] = self.missing_def_wrought.view(1, -1)
+        ps = self._fill_slice(ps, ps_mask, [DEF_TEMP, DEF_STRAIN], def_fill)
+
+        ht1_known = pb_mask[:, HT1] > 0.5
+        ht1_on = ht1_known & (pb[:, HT1] > 0.5)
+        ht1_off = ht1_known & (pb[:, HT1] <= 0.5)
+
+        ht1_tt_fill = self.missing_ht1_temp_time_default.view(1, -1).expand(bs, -1).clone()
+        ht1_tt_fill[ht1_off] = self.missing_ht1_temp_time_off.view(1, -1)
+        ps = self._fill_slice(ps, ps_mask, [HT1_TEMP, HT1_TIME], ht1_tt_fill)
+
+        ht1_cool_fill = self.missing_ht1_cool_default.view(1, -1).expand(bs, -1).clone()
+        ht1_cool_fill[ht1_on] = self.missing_ht1_cool_on.view(1, -1)
+        ht1_cool_fill[ht1_off] = self.missing_ht1_cool_off.view(1, -1)
+        pb = self._fill_slice(pb, pb_mask, [HT1_QUENCH, HT1_AIR, HT1_FURNACE], ht1_cool_fill)
+
+        ht2_known = pb_mask[:, HT2] > 0.5
+        ht2_on = ht2_known & (pb[:, HT2] > 0.5)
+        ht2_off = ht2_known & (pb[:, HT2] <= 0.5)
+
+        ht2_tt_fill = self.missing_ht2_temp_time_default.view(1, -1).expand(bs, -1).clone()
+        ht2_tt_fill[ht2_off] = self.missing_ht2_temp_time_off.view(1, -1)
+        ps = self._fill_slice(ps, ps_mask, [HT2_TEMP, HT2_TIME], ht2_tt_fill)
+
+        ht2_cool_fill = self.missing_ht2_cool_default.view(1, -1).expand(bs, -1).clone()
+        ht2_cool_fill[ht2_on] = self.missing_ht2_cool_on.view(1, -1)
+        ht2_cool_fill[ht2_off] = self.missing_ht2_cool_off.view(1, -1)
+        pb = self._fill_slice(pb, pb_mask, [HT2_QUENCH, HT2_AIR], ht2_cool_fill)
+
+        ps = ps * ps_mask + (1 - ps_mask) * self.missing_proc_scalar_default.view(1, -1).expand(bs, -1)
+
+        if ph is not None:
+            ph = ph
+
+        return pb, ps, ph
+
 class ELM(nn.Module):
     def __init__(self, mask_mode = 'zero', Pr = True, Ph = True):
         super(ELM, self).__init__()
@@ -98,9 +208,7 @@ class ELM(nn.Module):
         self.af = nn.LeakyReLU(LEAKY_RATE)
         
         if self.mask_mode == 'learned':
-            self.missing_proc_bool = nn.Parameter(torch.zeros(N_PROC_BOOL))
-            self.missing_proc_scalar = nn.Parameter(torch.zeros(N_PROC_SCALAR))
-            self.missing_phase_scalar = nn.Parameter(torch.zeros(N_PHASE_SCALAR))
+            self.learned_mask = LearnedMaskedProc()
         elif self.mask_mode in ['mean_dropout', 'sample_dropout']:
             self.masked_layer = MaskedInputLayer(use_random_sample=(self.mask_mode == 'sample_dropout'))
 
@@ -122,12 +230,11 @@ class ELM(nn.Module):
         proc_scalar = proc_scalar.reshape(batch_size, -1)
         
         if self.mask_mode == 'learned':
-            if proc_bool_mask is not None:
-                proc_bool_mask = proc_bool_mask.reshape(batch_size, -1)
-                proc_bool = proc_bool * proc_bool_mask + (1 - proc_bool_mask) * self.missing_proc_bool.expand(batch_size, -1)
-            if proc_scalar_mask is not None:
-                proc_scalar_mask = proc_scalar_mask.reshape(batch_size, -1)
-                proc_scalar = proc_scalar * proc_scalar_mask + (1 - proc_scalar_mask) * self.missing_proc_scalar.expand(batch_size, -1)
+            proc_bool_mask_r = proc_bool_mask.reshape(batch_size, -1) if proc_bool_mask is not None else None
+            proc_scalar_mask_r = proc_scalar_mask.reshape(batch_size, -1) if proc_scalar_mask is not None else None
+            phase_scalar_r = phase_scalar.reshape(batch_size, -1) if phase_scalar is not None else None
+            proc_bool, proc_scalar, phase_scalar_r = self.learned_mask(proc_bool, proc_scalar, phase_scalar_r, proc_bool_mask_r, proc_scalar_mask_r)
+            phase_scalar = phase_scalar_r
         elif self.mask_mode in ['mean_dropout', 'sample_dropout']:
             proc_bool = proc_bool.reshape(batch_size, -1)
             proc_bool_mask_reshaped = proc_bool_mask.reshape(batch_size, -1) if proc_bool_mask is not None else None
@@ -163,9 +270,7 @@ class ELM_ElemFeat(nn.Module):
         self.af = nn.LeakyReLU(LEAKY_RATE)
 
         if self.mask_mode == 'learned':
-            self.missing_proc_bool = nn.Parameter(torch.zeros(N_PROC_BOOL))
-            self.missing_proc_scalar = nn.Parameter(torch.zeros(N_PROC_SCALAR))
-            self.missing_phase_scalar = nn.Parameter(torch.zeros(N_PHASE_SCALAR))
+            self.learned_mask = LearnedMaskedProc()
         elif self.mask_mode in ['mean_dropout', 'sample_dropout']:
             self.masked_layer = MaskedInputLayer(use_random_sample=(self.mask_mode == 'sample_dropout'))
 
@@ -187,12 +292,11 @@ class ELM_ElemFeat(nn.Module):
         proc_scalar = proc_scalar.reshape(batch_size, -1)
         
         if self.mask_mode == 'learned':
-            if proc_bool_mask is not None:
-                proc_bool_mask = proc_bool_mask.reshape(batch_size, -1)
-                proc_bool = proc_bool * proc_bool_mask + (1 - proc_bool_mask) * self.missing_proc_bool.expand(batch_size, -1)
-            if proc_scalar_mask is not None:
-                proc_scalar_mask = proc_scalar_mask.reshape(batch_size, -1)
-                proc_scalar = proc_scalar * proc_scalar_mask + (1 - proc_scalar_mask) * self.missing_proc_scalar.expand(batch_size, -1)
+            proc_bool_mask_r = proc_bool_mask.reshape(batch_size, -1) if proc_bool_mask is not None else None
+            proc_scalar_mask_r = proc_scalar_mask.reshape(batch_size, -1) if proc_scalar_mask is not None else None
+            phase_scalar_r = phase_scalar.reshape(batch_size, -1) if phase_scalar is not None else None
+            proc_bool, proc_scalar, phase_scalar_r = self.learned_mask(proc_bool, proc_scalar, phase_scalar_r, proc_bool_mask_r, proc_scalar_mask_r)
+            phase_scalar = phase_scalar_r
         elif self.mask_mode in ['mean_dropout', 'sample_dropout']:
             proc_bool = proc_bool.reshape(batch_size, -1)
             proc_bool_mask_reshaped = proc_bool_mask.reshape(batch_size, -1) if proc_bool_mask is not None else None
@@ -233,9 +337,7 @@ class ELM_CNN(nn.Module):
         self.af = nn.LeakyReLU(LEAKY_RATE)
 
         if self.mask_mode == 'learned':
-            self.missing_proc_bool = nn.Parameter(torch.zeros(N_PROC_BOOL))
-            self.missing_proc_scalar = nn.Parameter(torch.zeros(N_PROC_SCALAR))
-            self.missing_phase_scalar = nn.Parameter(torch.zeros(N_PHASE_SCALAR))
+            self.learned_mask = LearnedMaskedProc()
         elif self.mask_mode in ['mean_dropout', 'sample_dropout']:
             self.masked_layer = MaskedInputLayer(use_random_sample=(self.mask_mode == 'sample_dropout'))
 
@@ -257,12 +359,11 @@ class ELM_CNN(nn.Module):
         proc_scalar = proc_scalar.reshape(batch_size, -1)
         
         if self.mask_mode == 'learned':
-            if proc_bool_mask is not None:
-                proc_bool_mask = proc_bool_mask.reshape(batch_size, -1)
-                proc_bool = proc_bool * proc_bool_mask + (1 - proc_bool_mask) * self.missing_proc_bool.expand(batch_size, -1)
-            if proc_scalar_mask is not None:
-                proc_scalar_mask = proc_scalar_mask.reshape(batch_size, -1)
-                proc_scalar = proc_scalar * proc_scalar_mask + (1 - proc_scalar_mask) * self.missing_proc_scalar.expand(batch_size, -1)
+            proc_bool_mask_r = proc_bool_mask.reshape(batch_size, -1) if proc_bool_mask is not None else None
+            proc_scalar_mask_r = proc_scalar_mask.reshape(batch_size, -1) if proc_scalar_mask is not None else None
+            phase_scalar_r = phase_scalar.reshape(batch_size, -1) if phase_scalar is not None else None
+            proc_bool, proc_scalar, phase_scalar_r = self.learned_mask(proc_bool, proc_scalar, phase_scalar_r, proc_bool_mask_r, proc_scalar_mask_r)
+            phase_scalar = phase_scalar_r
         elif self.mask_mode in ['mean_dropout', 'sample_dropout']:
             proc_bool = proc_bool.reshape(batch_size, -1)
             proc_bool_mask_reshaped = proc_bool_mask.reshape(batch_size, -1) if proc_bool_mask is not None else None
@@ -406,9 +507,7 @@ class FCNN(nn.Module):
             )
 
         if self.mask_mode == 'learned':
-            self.missing_proc_bool = nn.Parameter(torch.zeros(N_PROC_BOOL))
-            self.missing_proc_scalar = nn.Parameter(torch.zeros(N_PROC_SCALAR))
-            self.missing_phase_scalar = nn.Parameter(torch.zeros(N_PHASE_SCALAR))
+            self.learned_mask = LearnedMaskedProc()
         elif self.mask_mode in ['mean_dropout', 'sample_dropout']:
             self.masked_layer = MaskedInputLayer(use_random_sample=(self.mask_mode == 'sample_dropout'))
 
@@ -438,12 +537,11 @@ class FCNN(nn.Module):
         proc_scalar = proc_scalar.reshape(batch_size, -1)
         
         if self.mask_mode == 'learned':
-            if proc_bool_mask is not None:
-                proc_bool_mask = proc_bool_mask.reshape(batch_size, -1)
-                proc_bool = proc_bool * proc_bool_mask + (1 - proc_bool_mask) * self.missing_proc_bool.expand(batch_size, -1)
-            if proc_scalar_mask is not None:
-                proc_scalar_mask = proc_scalar_mask.reshape(batch_size, -1)
-                proc_scalar = proc_scalar * proc_scalar_mask + (1 - proc_scalar_mask) * self.missing_proc_scalar.expand(batch_size, -1)
+            proc_bool_mask_r = proc_bool_mask.reshape(batch_size, -1) if proc_bool_mask is not None else None
+            proc_scalar_mask_r = proc_scalar_mask.reshape(batch_size, -1) if proc_scalar_mask is not None else None
+            phase_scalar_r = phase_scalar.reshape(batch_size, -1) if phase_scalar is not None else None
+            proc_bool, proc_scalar, phase_scalar_r = self.learned_mask(proc_bool, proc_scalar, phase_scalar_r, proc_bool_mask_r, proc_scalar_mask_r)
+            phase_scalar = phase_scalar_r
         elif self.mask_mode in ['mean_dropout', 'sample_dropout']:
             proc_bool = proc_bool.reshape(batch_size, -1)
             proc_bool_mask_reshaped = proc_bool_mask.reshape(batch_size, -1) if proc_bool_mask is not None else None
@@ -581,8 +679,7 @@ class Attention(nn.Module):
             self.layer5 = self._make_head(self.branch_dim, 1)
 
         if self.mask_mode == 'learned':
-            self.missing_proc_bool   = nn.Parameter(torch.zeros(N_PROC_BOOL))
-            self.missing_proc_scalar = nn.Parameter(torch.zeros(N_PROC_SCALAR))
+            self.learned_mask = LearnedMaskedProc()
             
         elif self.mask_mode in ['mean_dropout', 'sample_dropout']:
             self.masked_layer = MaskedInputLayer(
@@ -623,12 +720,9 @@ class Attention(nn.Module):
             dtype=torch.float32, device=comp.device
         )
         if self.mask_mode == 'learned':
-            if proc_bool_mask is not None:
-                mask = proc_bool_mask.reshape(batch_size, -1)
-                proc_bool = proc_bool * mask + (1 - mask) * self.missing_proc_bool.expand(batch_size, -1)
-            if proc_scalar_mask is not None:
-                mask = proc_scalar_mask.reshape(batch_size, -1)
-                proc_scalar = proc_scalar * mask + (1 - mask) * self.missing_proc_scalar.expand(batch_size, -1)
+            proc_bool_mask_r = proc_bool_mask.reshape(batch_size, -1) if proc_bool_mask is not None else None
+            proc_scalar_mask_r = proc_scalar_mask.reshape(batch_size, -1) if proc_scalar_mask is not None else None
+            proc_bool, proc_scalar, _ = self.learned_mask(proc_bool, proc_scalar, None, proc_bool_mask_r, proc_scalar_mask_r)
         elif self.mask_mode in ['mean_dropout', 'sample_dropout']:
             proc_bool_mask_resh = proc_bool_mask.reshape(batch_size, -1) if proc_bool_mask is not None else None
             proc_bool = self.masked_layer(proc_bool, proc_bool_mask_resh, proc_bool_mean)
