@@ -185,7 +185,7 @@ def plot_prediction_scatter(model=None):
         else:
             prop_mask_np = np.concatenate((prop_mask_np, prop_mask_np_batch), axis=0)
     
-    fig, axes = plt.subplots(1, 5, figsize=(30, 6))
+    fig, axes = plt.subplots(1, 5, figsize=(15, 3))
     axes = axes.flatten()
     units = ['GPa', 'MPa', 'MPa', '%', 'HV']
     
@@ -249,4 +249,4 @@ if __name__ == '__main__':
     # plot_training_errors()
     # plot_model_comparison()
     # plot_rl_best_scores()
-    plot_prediction_scatter(ELM(mask_mode = 'zero', Pr = True, Ph = True))
+    plot_prediction_scatter(ELM(mask_mode = 'learned', Pr = True, Ph = True))

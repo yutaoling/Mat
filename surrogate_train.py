@@ -228,13 +228,13 @@ class EarlyStopping:
         if val_loss < self.best_loss - self.min_delta:
             self.best_loss = val_loss
             self.counter = 0
-            if self.verbose:
-                print(f"[EarlyStopping] New best val loss: {val_loss:.6f}")
+            # if self.verbose:
+                # print(f"[EarlyStopping] New best val loss: {val_loss:.6f}")
             return False
         else:
             self.counter += 1
-            if self.verbose and self.counter % 25 == 0:
-                print(f"[EarlyStopping] No improvement ({self.counter}/{self.patience})")
+            # if self.verbose and self.counter % 25 == 0:
+                # print(f"[EarlyStopping] No improvement ({self.counter}/{self.patience})")
             return self.counter >= self.patience
 
 _cached_loss_tensors = {}
@@ -351,7 +351,7 @@ def train_a_model(model = None,
     train_dl = get_dataloader(train_d, batch_size)
     val_dl = get_dataloader(val_d, batch_size, augment=False)
     epoch_log_buffer = []
-    # early_stopper = EarlyStopping(patience=150,min_delta=1e-4,verbose=True)
+    early_stopper = EarlyStopping(patience=150,min_delta=1e-4,verbose=True)
     prop_scaler = scalers[4]
 
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
@@ -396,9 +396,9 @@ def train_a_model(model = None,
                 print(f"Predicted: {predicted_inv.flatten()}")
                 print(f"Actual: {actual_inv.flatten()}")
 
-        # if early_stopper.step(val_loss, model):
-        #     print(f"[EarlyStopping] Stop at epoch {epoch}")
-        #     break
+        if early_stopper.step(val_loss, model):
+            print(f"[EarlyStopping] Stop at epoch {epoch}")
+            break
 
     if save_path:
         np.savetxt(
@@ -434,7 +434,7 @@ def get_model(model = None,
             val_d = val_d,
             scalers = scalers,
             save_path=save_path,
-            batch_size=128,
+            batch_size=16,
             num_training_epochs=1000)
         torch.save(model.state_dict(), model_path)
     
