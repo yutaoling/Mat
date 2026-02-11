@@ -279,13 +279,17 @@ def train_validate_split(data_tuple, ratio_tuple = (0.95, 0.05)):
     id_data, comp_data, proc_bool_data, proc_scalar_data, phase_scalar_data, prop_data, \
         elem_feature, proc_bool_mask, proc_scalar_mask, prop_mask = data_tuple
     _ratio_1 = sum(ratio_tuple[1:]) / sum(ratio_tuple)
+    
+    # 修复点：确保所有数据（包括 prop_mask）都被同步切分
     id_train, id_val, comp_train, comp_val, proc_bool_train, proc_bool_val, proc_scalar_train, proc_scalar_val, \
         phase_scalar_train, phase_scalar_val, prop_train, prop_val, \
-        proc_bool_mask_train, proc_bool_mask_val, proc_scalar_mask_train, proc_scalar_mask_val, prop_mask_train, prop_mask_val = \
+        proc_bool_mask_train, proc_bool_mask_val, proc_scalar_mask_train, proc_scalar_mask_val, \
+        prop_mask_train, prop_mask_val = \
         train_test_split(id_data, comp_data, proc_bool_data, proc_scalar_data, phase_scalar_data, \
             prop_data, proc_bool_mask, proc_scalar_mask, prop_mask, test_size = _ratio_1, random_state = _random_seed)
+    
     return (id_train, comp_train, proc_bool_train, proc_scalar_train, phase_scalar_train, prop_train, \
-        elem_feature, proc_bool_mask_train, proc_scalar_mask_train, prop_mask), \
+        elem_feature, proc_bool_mask_train, proc_scalar_mask_train, prop_mask_train), \
             (id_val, comp_val, proc_bool_val, proc_scalar_val, phase_scalar_val, prop_val, \
                 elem_feature, proc_bool_mask_val, proc_scalar_mask_val, prop_mask_val)
 
