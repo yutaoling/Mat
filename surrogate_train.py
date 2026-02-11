@@ -399,7 +399,7 @@ def train_a_model(model = None,
                 print(f"Predicted: {predicted_inv.flatten()}")
                 print(f"Actual: {actual_inv.flatten()}")
 
-        if early_stopper.step(val_loss, model):
+        if early_stopper.step(val_loss, model) and val_loss < 1.0:
             print(f"[EarlyStopping] Stop at epoch {epoch}")
             break
 
@@ -421,7 +421,6 @@ def get_model(model = None,
               save_path=None,):
     try:
         train_d, val_d, scalers = joblib.load(data_path)
-        assert False
     except:
         d = load_data()
         d = filter_activated_data(d, activated_value=1)
