@@ -158,7 +158,7 @@ def plot_prediction_scatter(model=None):
     model = model.to(device)
     model.eval()
     
-    val_dl = get_dataloader(train_d, batch_size=len(train_d[0]), augment=False)
+    val_dl = get_dataloader(val_d, batch_size=len(val_d[0]), augment=False)
     prop_original = np.empty((0, 5))
     pred_original = np.empty((0, 5))
     prop_mask_np = None
@@ -238,7 +238,7 @@ def plot_prediction_scatter(model=None):
     plt.suptitle('Validation Set: Actual vs Predicted', fontsize=14, fontweight='bold')
     plt.tight_layout()
     
-    # plt.savefig(f'results/scatter_{model.get_name()}.png')
+    plt.savefig(f'results/scatter_{model.get_name()}.png')
     plt.show()
     
     return pred_original, prop_original, prop_mask_np

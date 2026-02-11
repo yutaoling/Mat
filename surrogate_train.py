@@ -448,7 +448,7 @@ def get_model(model = None,
     return model, train_d, val_d, scalers
 
 if __name__ == '__main__':
-    mask_modes = ['learned', 'mean_dropout', 'sample_dropout']
+    mask_modes = ['zero', 'learned', 'mean_dropout', 'sample_dropout']
     for mask_mode in mask_modes:
         for model in MODEL_LIST(mask_mode = mask_mode):
             model_name = model.get_name()
