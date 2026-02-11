@@ -249,4 +249,4 @@ if __name__ == '__main__':
     # plot_training_errors()
     # plot_model_comparison()
     # plot_rl_best_scores()
-    plot_prediction_scatter(FCNN(mask_mode = 'sample_dropout', elem_feat='None', branch_mode='FullyBranched'))
+    plot_prediction_scatter(FCNN(mask_mode = 'learned', elem_feat='None', branch_mode='FullyBranched'))

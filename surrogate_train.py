@@ -352,7 +352,7 @@ def train_a_model(model = None,
         epoch_log_buffer.append((epoch, _batch_mean_loss, val_loss))
         if not epoch % 25:
             print(epoch, _batch_mean_loss, val_loss)
-        if not epoch % 100:
+        if not epoch % 100 and False:
             if max_sample_val is not None:
                 predicted_inv = scalers[4].inverse_transform(max_sample_val['predicted'].reshape(1, -1))
                 actual_inv = max_sample_val['actual'].copy().reshape(1, -1)
@@ -392,7 +392,6 @@ def get_model(model = None,
               save_path=None,):
     try:
         train_d, val_d, scalers = joblib.load(data_path)
-        assert False
     except:
         d = load_data()
         d = filter_activated_data(d, activated_value=1)
@@ -416,7 +415,7 @@ def get_model(model = None,
     return model, train_d, val_d, scalers
 
 if __name__ == '__main__':
-    mask_modes = ['learned', 'zero', 'mean_dropout', 'sample_dropout']
+    mask_modes = ['learned', 'mean_dropout', 'sample_dropout']
     for mask_mode in mask_modes:
         for model in MODEL_LIST(mask_mode = mask_mode):
             model_name = model.get_name()
