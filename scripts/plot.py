@@ -168,15 +168,16 @@ def plot_prediction_scatter(model=None):
         with torch.no_grad():
             pred = model(comp, elem_feat, proc_bool, proc_scalar, phase_scalar, proc_bool_mask, proc_scalar_mask, scalers)
 
+        prop_scaler = scalers[4]
         pred_np = pred.detach().reshape(-1, N_PROP).cpu().numpy()
         prop_np = prop.detach().reshape(-1, N_PROP).cpu().numpy()
         prop_mask_np_batch = prop_mask.detach().reshape(-1, N_PROP).cpu().numpy()
 
-        prop_scaler = scalers[4]
+        # 反归一化
         pred_ori = prop_scaler.inverse_transform(pred_np)
         prop_ori = prop_scaler.inverse_transform(prop_np)
-        # prop_ori[prop_ori < 0.1] = np.nan
 
+        # 确保只有 mask 为 1 的地方才参与合并，防止 NaN 填充的 0 值干扰
         prop_original = np.concatenate((prop_original, prop_ori), axis=0)
         pred_original = np.concatenate((pred_original, pred_ori), axis=0)
 
@@ -249,4 +250,4 @@ if __name__ == '__main__':
     # plot_training_errors()
     # plot_model_comparison()
     # plot_rl_best_scores()
-    plot_prediction_scatter(FCNN(mask_mode = 'learned', elem_feat='None', branch_mode='FullyBranched'))
+    plot_prediction_scatter(ELM(mask_mode = 'learned', Pr=True, Ph=True))

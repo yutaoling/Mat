@@ -61,41 +61,70 @@ def load_data():
     proc_bool_mask = ~np.isnan(proc_bool_data)
     proc_scalar_mask = ~np.isnan(proc_scalar_data)
     prop_mask = ~np.isnan(prop_data)
-
-    comp_data = np.nan_to_num(comp_data, nan=0)
-    proc_bool_data = np.nan_to_num(proc_bool_data, nan=0)
-    proc_scalar_data = np.nan_to_num(proc_scalar_data, nan=0)
-    phase_scalar_data = np.nan_to_num(phase_scalar_data, nan=0)
-    prop_data = np.nan_to_num(prop_data, nan=0)
-
+    
     d = (id_data, comp_data, proc_bool_data, proc_scalar_data, phase_scalar_data, prop_data, elem_feature, proc_bool_mask, proc_scalar_mask, prop_mask,)
 
     return d
 
 def fit_transform(data_tuple, scalers = None):
     id_data, comp_data, proc_bool_data, proc_scalar_data, phase_scalar_data, prop_data, elem_feature, proc_bool_mask, proc_scalar_mask, prop_mask = data_tuple
+    
+    def scale_data(data, mask, scaler=None):
+        if scaler is None:
+            scaler = StandardScaler()
+            if mask is not None:
+                valid_data = data[mask].reshape(-1, 1) if data.ndim == 1 else data[mask.any(axis=1)]
+                scaler.fit(data)
+            else:
+                scaler.fit(data)
+        scaled_data = data.copy()
+        mean = scaler.mean_
+        std = scaler.scale_
+        scaled_data = (data - mean) / (std + 1e-8)
+        scaled_data = np.nan_to_num(scaled_data, nan=0.0)
+        return scaled_data, scaler
+
     if scalers is not None:
         comp_data = scalers[0].transform(comp_data)
-        proc_bool_data = scalers[1].transform(proc_bool_data)
-        proc_scalar_data = scalers[2].transform(proc_scalar_data)
-        phase_scalar_data = scalers[3].transform(phase_scalar_data)
-        prop_data = scalers[4].transform(prop_data)
+        proc_bool_data = np.nan_to_num((proc_bool_data - scalers[1].mean_) / scalers[1].scale_, nan=0.0)
+        proc_scalar_data = np.nan_to_num((proc_scalar_data - scalers[2].mean_) / scalers[2].scale_, nan=0.0)
+        phase_scalar_data = np.nan_to_num((phase_scalar_data - scalers[3].mean_) / scalers[3].scale_, nan=0.0)
+        prop_data = np.nan_to_num((prop_data - scalers[4].mean_) / scalers[4].scale_, nan=0.0)
         elem_feature = scalers[5].transform(elem_feature.T)
+        
         return (
             (id_data, comp_data, proc_bool_data, proc_scalar_data, phase_scalar_data, prop_data, elem_feature, proc_bool_mask, proc_scalar_mask, prop_mask,),
             scalers,
         )
 
     else:
-        id_data, comp_data, proc_bool_data, proc_scalar_data, phase_scalar_data, prop_data, elem_feature, proc_bool_mask, proc_scalar_mask, prop_mask = data_tuple
-        comp_scaler, proc_bool_scaler, proc_scalar_scaler, phase_scalar_scaler, prop_scaler, elem_feature_scaler = \
-            [StandardScaler() for _ in range(6)]
+        comp_scaler = StandardScaler().fit(comp_data)
+        comp_data = comp_scaler.transform(comp_data)
         
-        comp_data = comp_scaler.fit_transform(comp_data)
-        proc_bool_data = proc_bool_scaler.fit_transform(proc_bool_data)
-        proc_scalar_data = proc_scalar_scaler.fit_transform(proc_scalar_data)
-        phase_scalar_data = phase_scalar_scaler.fit_transform(phase_scalar_data)
-        prop_data = prop_scaler.fit_transform(prop_data)
+        def get_scaler_with_nan(data):
+            s = StandardScaler()
+            flat_data = data.flatten()
+            valid_elements = flat_data[~np.isnan(flat_data)].reshape(-1, 1)
+            if len(valid_elements) > 0:
+                s.fit(valid_elements)
+            else:
+                s.mean_ = np.array([0.0])
+                s.scale_ = np.array([1.0])
+            return s
+        
+        def smart_scale(data):
+            df = pd.DataFrame(data)
+            scaler = StandardScaler()
+            scaler.fit(df)
+            scaled_values = scaler.transform(df)
+            return np.nan_to_num(scaled_values, nan=0.0), scaler
+
+        proc_bool_data, proc_bool_scaler = smart_scale(proc_bool_data)
+        proc_scalar_data, proc_scalar_scaler = smart_scale(proc_scalar_data)
+        phase_scalar_data, phase_scalar_scaler = smart_scale(phase_scalar_data)
+        prop_data, prop_scaler = smart_scale(prop_data)
+        
+        elem_feature_scaler = StandardScaler()
         elem_feature = elem_feature_scaler.fit_transform(elem_feature.T)
 
         return (
@@ -392,6 +421,7 @@ def get_model(model = None,
               save_path=None,):
     try:
         train_d, val_d, scalers = joblib.load(data_path)
+        assert False
     except:
         d = load_data()
         d = filter_activated_data(d, activated_value=1)
