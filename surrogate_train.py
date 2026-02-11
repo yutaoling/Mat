@@ -274,24 +274,82 @@ def MaskedLoss(out, prop, mask, prop_scaler=None):
     return mean_loss.mean(), mean_loss
 
 
-def train_validate_split(data_tuple, ratio_tuple = (0.95, 0.05)):
+def train_validate_test_split(
+    data_tuple,
+    ratio_tuple=(0.9, 0.1),
+    test_ratio_in_complete=0.1,
+    min_test_size=1,
+):
     _random_seed = next(iter(seeds))
+
     id_data, comp_data, proc_bool_data, proc_scalar_data, phase_scalar_data, prop_data, \
         elem_feature, proc_bool_mask, proc_scalar_mask, prop_mask = data_tuple
-    _ratio_1 = sum(ratio_tuple[1:]) / sum(ratio_tuple)
-    
-    # 修复点：确保所有数据（包括 prop_mask）都被同步切分
+
+    complete_mask = (id_data[:, 2] == 1)
+    complete_indices = np.where(complete_mask)[0]
+
+    test_size = int(np.floor(len(complete_indices) * float(test_ratio_in_complete)))
+    test_size = max(int(min_test_size), test_size)
+
+    rng = np.random.RandomState(_random_seed)
+    test_indices = rng.choice(complete_indices, size=test_size, replace=False)
+
+    keep_mask = np.ones(len(id_data), dtype=bool)
+    keep_mask[test_indices] = False
+
+    test_d = (
+        id_data[test_indices],
+        comp_data[test_indices],
+        proc_bool_data[test_indices],
+        proc_scalar_data[test_indices],
+        phase_scalar_data[test_indices],
+        prop_data[test_indices],
+        elem_feature,
+        proc_bool_mask[test_indices],
+        proc_scalar_mask[test_indices],
+        prop_mask[test_indices],
+    )
+
+    id_left = id_data[keep_mask]
+    comp_left = comp_data[keep_mask]
+    proc_bool_left = proc_bool_data[keep_mask]
+    proc_scalar_left = proc_scalar_data[keep_mask]
+    phase_scalar_left = phase_scalar_data[keep_mask]
+    prop_left = prop_data[keep_mask]
+    proc_bool_mask_left = proc_bool_mask[keep_mask]
+    proc_scalar_mask_left = proc_scalar_mask[keep_mask]
+    prop_mask_left = prop_mask[keep_mask]
+
+    val_ratio = ratio_tuple[1] / sum(ratio_tuple)
+
     id_train, id_val, comp_train, comp_val, proc_bool_train, proc_bool_val, proc_scalar_train, proc_scalar_val, \
         phase_scalar_train, phase_scalar_val, prop_train, prop_val, \
         proc_bool_mask_train, proc_bool_mask_val, proc_scalar_mask_train, proc_scalar_mask_val, \
         prop_mask_train, prop_mask_val = \
-        train_test_split(id_data, comp_data, proc_bool_data, proc_scalar_data, phase_scalar_data, \
-            prop_data, proc_bool_mask, proc_scalar_mask, prop_mask, test_size = _ratio_1, random_state = _random_seed)
-    
-    return (id_train, comp_train, proc_bool_train, proc_scalar_train, phase_scalar_train, prop_train, \
-        elem_feature, proc_bool_mask_train, proc_scalar_mask_train, prop_mask_train), \
-            (id_val, comp_val, proc_bool_val, proc_scalar_val, phase_scalar_val, prop_val, \
-                elem_feature, proc_bool_mask_val, proc_scalar_mask_val, prop_mask_val)
+        train_test_split(
+            id_left,
+            comp_left,
+            proc_bool_left,
+            proc_scalar_left,
+            phase_scalar_left,
+            prop_left,
+            proc_bool_mask_left,
+            proc_scalar_mask_left,
+            prop_mask_left,
+            test_size=val_ratio,
+            random_state=_random_seed,
+        )
+
+    train_d = (
+        id_train, comp_train, proc_bool_train, proc_scalar_train, phase_scalar_train, prop_train,
+        elem_feature, proc_bool_mask_train, proc_scalar_mask_train, prop_mask_train
+    )
+    val_d = (
+        id_val, comp_val, proc_bool_val, proc_scalar_val, phase_scalar_val, prop_val,
+        elem_feature, proc_bool_mask_val, proc_scalar_mask_val, prop_mask_val
+    )
+
+    return train_d, val_d, test_d
 
 def validate(model, val_dl, scalers=None, prop_scaler=None):
     model.eval()
@@ -424,13 +482,13 @@ def get_model(model = None,
               train = True,
               save_path=None,):
     try:
-        train_d, val_d, scalers = joblib.load(data_path)
+        train_d, val_d, test_d, scalers = joblib.load(data_path)
     except:
         d = load_data()
         d = filter_activated_data(d, activated_value=1)
         d, scalers = fit_transform(d)
-        train_d, val_d = train_validate_split(d, (0.9, 0.1))
-        joblib.dump((train_d, val_d, scalers), data_path)
+        train_d, val_d, test_d = train_validate_test_split(d, ratio_tuple=(0.9, 0.1), test_ratio_in_complete=0.1)
+        joblib.dump((train_d, val_d, test_d, scalers), data_path)
 
     if resume:
         model.load_state_dict(torch.load(model_path, map_location=device))

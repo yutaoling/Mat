@@ -8,7 +8,7 @@ import torch.nn.init as init
 torch.autograd.set_detect_anomaly(True)
 torch.set_default_dtype(torch.float32)
 
-ID = ['id', 'Activated']
+ID = ['id', 'Activated', 'Complete_Condition']
 COMP = [
     'Ti', 'Al', 'V', 'Cr', 'Mn', 'Fe', 'Cu', 
     'Zr', 'Nb', 'Mo', 'Sn', 'Hf', 'Ta', 'W', 
