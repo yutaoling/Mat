@@ -11,7 +11,7 @@ def surrogate_compare():
     results = pd.DataFrame(columns=['Model', 'Target', 'R2', 'MAE', 'RMSE', 'MAPE', 'N'])
     index = 0
     
-    train_d, val_d, scalers = joblib.load('models/surrogate/data.pth')
+    train_d, val_d, test_d, scalers = joblib.load('models/surrogate/data.pth')
     mask_modes = ['zero', 'learned', 'mean_dropout', 'sample_dropout']
     for mask_mode in mask_modes:
         for model in MODEL_LIST(mask_mode = mask_mode):
@@ -67,7 +67,7 @@ def surrogate_compare():
                 print(f'On {prop_name}: R²={r2:.3f}\tMAE={mae:.1f}\tRMSE={rmse:.1f}\tMAPE={mape:.1f}%\tn={len(y_true)}')
                 results.loc[index] = [model_name, prop_name, r2, mae, rmse, mape, len(y_true)]
                 index += 1
-    results.to_excel('results/surrogate_comparison.xlsx', index=False)
+    results.to_excel('results/surrogate_comparison_val.xlsx', index=False)
     
 if __name__ == "__main__":
     surrogate_compare()

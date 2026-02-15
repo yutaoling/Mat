@@ -798,96 +798,129 @@ class Attention(nn.Module):
 
 
 class TiAlloyNet(nn.Module):
-    def __init__(self, mask_mode = 'zero', branch_mode = 'None', Pr = True, Ph = True):
+    def __init__(self):
         super(TiAlloyNet, self).__init__()
+
+        self.learned_mask = LearnedMaskedProc()
 
         self._kernel_size = (1, N_ELEM_FEAT_P1)
         self.conv1 = nn.Conv2d(in_channels=1, out_channels=N_ELEM_FEAT_P1, kernel_size=self._kernel_size)
         self.bn_conv1 = nn.BatchNorm2d(N_ELEM_FEAT_P1)
         self.conv2 = nn.Conv2d(in_channels=1, out_channels=N_ELEM_FEAT_P1, kernel_size=self._kernel_size)
         self.bn_conv2 = nn.BatchNorm2d(N_ELEM_FEAT_P1)
-        
+
         self._n_cnn_out = N_ELEM * N_ELEM_FEAT_P1
-        self._n_in_fcnn = self._n_cnn_out + N_PROC_BOOL + N_PROC_SCALAR + N_PHASE_SCALAR
-        self._n_fcnn = N_FC_NERON
-        self._n_branch = N_BRANCH_NERON
-        
-        self.fc1 = nn.Linear(self._n_in_fcnn, self._n_fcnn)
-        self.bn1 = nn.BatchNorm1d(self._n_fcnn)
-        self.out_1 = nn.Linear(self._n_fcnn, 3)
-        self.fc2 = nn.Linear(self._n_fcnn, self._n_fcnn)
-        self.bn2 = nn.BatchNorm1d(self._n_fcnn)
 
-        self.fc_uts1 = nn.Linear(self._n_fcnn, self._n_branch)
-        self.bn_uts1 = nn.BatchNorm1d(self._n_branch)
-        self.fc_uts2 = nn.Linear(self._n_branch, self._n_branch)
-        self.out_uts = nn.Linear(self._n_branch, 1)
+        self.proc_in_dim = N_PROC_BOOL + N_PROC_SCALAR + N_PROC_BOOL + N_PROC_SCALAR
+        self.proc_mlp = nn.Sequential(
+            nn.Linear(self.proc_in_dim, N_BRANCH_NERON),
+            nn.BatchNorm1d(N_BRANCH_NERON),
+            nn.LeakyReLU(LEAKY_RATE),
+            nn.Dropout(DROP_RATE),
+            nn.Linear(N_BRANCH_NERON, N_BRANCH_NERON),
+            nn.BatchNorm1d(N_BRANCH_NERON),
+            nn.LeakyReLU(LEAKY_RATE),
+        )
 
-        self.fc_el1 = nn.Linear(self._n_fcnn, self._n_branch)
-        self.bn_el1 = nn.BatchNorm1d(self._n_branch)
-        self.fc_el2 = nn.Linear(self._n_branch, self._n_branch)
-        self.out_el = nn.Linear(self._n_branch, 1)
+        self.phase_proj = nn.Sequential(
+            nn.Linear(N_PHASE_SCALAR, N_BRANCH_NERON),
+            nn.BatchNorm1d(N_BRANCH_NERON),
+            nn.LeakyReLU(LEAKY_RATE),
+        )
 
-        self.af = nn.LeakyReLU(0.2)
-        self.dropout = nn.Dropout(0.2)
+        self.fusion_dim = self._n_cnn_out + N_BRANCH_NERON + N_BRANCH_NERON
+        self.fc1 = nn.Linear(self.fusion_dim, N_FC_NERON)
+        self.bn1 = nn.BatchNorm1d(N_FC_NERON)
+        self.fc2 = nn.Linear(N_FC_NERON, N_FC_NERON)
+        self.bn2 = nn.BatchNorm1d(N_FC_NERON)
+
+        self.head_strength = nn.Sequential(
+            nn.Linear(N_FC_NERON, N_BRANCH_NERON),
+            nn.BatchNorm1d(N_BRANCH_NERON),
+            nn.LeakyReLU(LEAKY_RATE),
+            nn.Linear(N_BRANCH_NERON, 3),
+        )
+        self.head_modulus = nn.Sequential(
+            nn.Linear(N_FC_NERON, N_BRANCH_NERON),
+            nn.BatchNorm1d(N_BRANCH_NERON),
+            nn.LeakyReLU(LEAKY_RATE),
+            nn.Linear(N_BRANCH_NERON, 1),
+        )
+        self.head_ductility = nn.Sequential(
+            nn.Linear(N_FC_NERON, N_BRANCH_NERON),
+            nn.BatchNorm1d(N_BRANCH_NERON),
+            nn.LeakyReLU(LEAKY_RATE),
+            nn.Dropout(DROP_RATE),
+            nn.Linear(N_BRANCH_NERON, 1),
+        )
+
+        self.af = nn.LeakyReLU(LEAKY_RATE)
+        self.dropout = nn.Dropout(DROP_RATE)
 
         self.reset_parameters()
 
-        self.lr = LEARNING_RATE        
+        self.lr = LEARNING_RATE
         self.optimizer = optim.Adam(self.parameters(), lr=self.lr, weight_decay=1e-4)
-        
 
     def reset_parameters(self):
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
                 init.kaiming_uniform_(m.weight, nonlinearity='relu')
-                if m.bias is not None: m.bias.data.zero_()
+                if m.bias is not None:
+                    m.bias.data.zero_()
             elif isinstance(m, nn.Linear):
                 init.xavier_uniform_(m.weight)
-                if m.bias is not None: m.bias.data.zero_()
+                if m.bias is not None:
+                    m.bias.data.zero_()
             elif isinstance(m, (nn.BatchNorm1d, nn.BatchNorm2d)):
-                if m.weight is not None: m.weight.data.fill_(1.)
-                if m.bias is not None: m.bias.data.zero_()
+                if m.weight is not None:
+                    m.weight.data.fill_(1.)
+                if m.bias is not None:
+                    m.bias.data.zero_()
 
     def forward(self, comp, elem_feat, proc_bool, proc_scalar, phase_scalar, proc_bool_mask, proc_scalar_mask, scalers = None):
+        batch_size = comp.size(0)
+
+        pb = proc_bool.reshape(batch_size, -1)
+        ps = proc_scalar.reshape(batch_size, -1)
+        ph = phase_scalar.reshape(batch_size, -1)
+        pb_mask = proc_bool_mask.reshape(batch_size, -1)
+        ps_mask = proc_scalar_mask.reshape(batch_size, -1)
+
+        pb, ps, ph = self.learned_mask(pb, ps, ph, pb_mask, ps_mask)
+
+        proc_vec = torch.cat([pb, ps, pb_mask, ps_mask], dim=-1)
+        proc_emb = self.proc_mlp(proc_vec)
+        phase_emb = self.phase_proj(ph)
+
         x = torch.cat([comp, elem_feat], dim=-1)
         residual = x
-        
+
         x = self.af(self.bn_conv1(self.conv1(x)))
         x = x.reshape(-1, 1, N_ELEM, N_ELEM_FEAT_P1)
         x = self.af(self.bn_conv2(self.conv2(x)))
         x = x.reshape(-1, 1, N_ELEM, N_ELEM_FEAT_P1)
-        
         x = x + residual
-        
-        x = x.view(-1, self._n_cnn_out)
+        comp_emb = x.view(-1, self._n_cnn_out)
 
-        x = torch.cat([
-            x,
-            proc_bool.reshape(-1, N_PROC_BOOL),
-            proc_scalar.reshape(-1, N_PROC_SCALAR),
-            phase_scalar.reshape(-1, N_PHASE_SCALAR)
-        ], dim=-1)
-        
+        x = torch.cat([comp_emb, proc_emb, phase_emb], dim=-1)
         x = self.af(self.bn1(self.fc1(x)))
-        out_1 = self.out_1(x)
         x = self.dropout(x)
         x = self.af(self.bn2(self.fc2(x)))
 
-        uts = self.af(self.bn_uts1(self.fc_uts1(x)))
-        uts = self.af(self.fc_uts2(uts))
-        uts = self.out_uts(uts)
+        ym = self.head_modulus(x)
+        strength = self.head_strength(x)
+        el = self.head_ductility(x)
 
-        el = self.af(self.bn_el1(self.fc_el1(x)))
-        el = self.af(self.fc_el2(el))
-        el = self.out_el(el)
-        
-        x = torch.cat([out_1[:,0:1], out_1[:,1:2], uts, el, out_1[:,2:3]], dim=-1)
-        return x
+        ys = strength[:, 0:1]
+        uts = strength[:, 1:2]
+        hv = strength[:, 2:3]
+
+        out = torch.cat([ym, ys, uts, el, hv], dim=-1)
+        return out
+
     def get_name(self):
-        name = "TiAlloyNet"
-        return name
-
+        return "TiAlloyNet"
 def MODEL_LIST(mask_mode: str) -> list:
     model_list = []
     ELM_list = [ELM(mask_mode = mask_mode, Pr = Pr, Ph = Ph).to(device)\
@@ -903,7 +936,7 @@ def MODEL_LIST(mask_mode: str) -> list:
     Attention_list = [Attention(mask_mode = mask_mode, branch_mode = Branch_mode).to(device)\
          for Branch_mode in ['None', 'MSHBranched', 'FullyBranched']]
     model_list.extend(Attention_list)
-    # model_list.append(TiAlloyNet(mask_mode = mask_mode).to(device))
+    # model_list.append(TiAlloyNet().to(device))
 
     return model_list
 

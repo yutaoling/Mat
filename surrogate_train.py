@@ -260,18 +260,29 @@ def MaskedLoss(out, prop, mask, prop_scaler=None):
     scaler_scale = cached['scaler_scale']
 
     weights = torch.ones(out.shape[1], device=out.device).view(1, -1)
-    
-    loss = nn.functional.huber_loss(out, prop, reduction='none', delta=1) * mask * weights
-    
+
+    huber = nn.functional.huber_loss(out, prop, reduction='none', delta=1)
+    per_label_loss = huber * mask * weights
+
     out_original = out * scaler_scale + scaler_mean
     constraint_positive = nn.functional.relu(-out_original) * mask * weights
-    constraint_uts_ys = nn.functional.relu(out_original[:, 1] - out_original[:, 2]) * (mask[:, 1] * mask[:, 2]) * ((weights[0,1] + weights[0,2]) / 2)
-    
-    total_loss = loss + 10.0 * constraint_positive
-    num_valid = mask.sum(dim=1).clamp(min=1e-6)
-    mean_loss = total_loss.sum(dim=1) / num_valid + 10.0 * constraint_uts_ys
 
-    return mean_loss.mean(), mean_loss
+    per_label_total = per_label_loss + 10.0 * constraint_positive
+
+    denom_labels = (mask * weights).sum().clamp(min=1e-6)
+    loss_main = per_label_total.sum() / denom_labels
+
+    pair_mask = (mask[:, 1] * mask[:, 2]).clamp(min=0.0, max=1.0)
+    constraint_uts_ys = nn.functional.relu(out_original[:, 1] - out_original[:, 2]) * pair_mask
+    denom_pairs = pair_mask.sum().clamp(min=1e-6)
+    loss_pair = constraint_uts_ys.sum() / denom_pairs
+
+    total = loss_main + 10.0 * loss_pair
+
+    per_sample_denom = (mask * weights).sum(dim=1).clamp(min=1e-6)
+    per_sample = per_label_total.sum(dim=1) / per_sample_denom + 10.0 * constraint_uts_ys
+
+    return total, per_sample
 
 
 def train_validate_test_split(
@@ -523,3 +534,17 @@ if __name__ == '__main__':
                 resume=False,
                 train=True,
                 save_path=f'{log_dir}/train_{model_name}.txt')
+    model = TiAlloyNet().to(device)
+    model_name = model.get_name()
+    print(f"\nTraining model: {model_name}\n")
+    model_dir = f'models/surrogate'
+    log_dir = f'logs/surrogate'
+    os.makedirs(model_dir, exist_ok=True)
+    os.makedirs(log_dir, exist_ok=True)
+    
+    get_model(model,
+        f'{model_dir}/model_{model_name}.pth',
+        f'{model_dir}/data.pth',
+        resume=False,
+        train=True,
+        save_path=f'{log_dir}/train_{model_name}.txt')

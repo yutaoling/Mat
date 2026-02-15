@@ -147,7 +147,7 @@ def plot_prediction_scatter(model=None):
     
     prop_names = PROP
     
-    train_d, val_d, scalers = joblib.load('models/surrogate/data.pth')
+    train_d, val_d, test_d, scalers = joblib.load('models/surrogate/data.pth')
     
     if model is None:
         model = ELM(mask_mode='zero', Pr=True, Ph=True)
@@ -158,11 +158,11 @@ def plot_prediction_scatter(model=None):
     model = model.to(device)
     model.eval()
     
-    val_dl = get_dataloader(val_d, batch_size=len(val_d[0]), augment=False)
+    test_dl = get_dataloader(test_d, batch_size=len(test_d[0]), augment=False)
     prop_original = np.empty((0, 5))
     pred_original = np.empty((0, 5))
     prop_mask_np = None
-    for batch in val_dl:
+    for batch in test_dl:
         id, comp, proc_bool, proc_scalar, phase_scalar, prop, elem_feat, proc_bool_mask, proc_scalar_mask, prop_mask = batch
 
         with torch.no_grad():
@@ -204,13 +204,13 @@ def plot_prediction_scatter(model=None):
             ax.set_title(f'{prop_name}', fontsize=12)
             continue
         
-        ax.scatter(y_true, y_pred, alpha=0.6, s=50, c='#3498db', edgecolors='white', linewidth=0.5)
+        ax.scatter(y_true, y_pred, alpha=0.6, s=30, c='#3498db', edgecolors='white', linewidth=0.5)
         
         min_val = min(y_true.min(), y_pred.min())
         max_val = max(y_true.max(), y_pred.max())
         margin = (max_val - min_val) * 0.1
         line_range = [min_val - margin, max_val + margin]
-        ax.plot(line_range, line_range, 'r--', linewidth=2, label='y=x')
+        ax.plot(line_range, line_range, 'r--', linewidth=1, label='y=x')
         ax.fill_between(line_range, [x * 0.9 for x in line_range], [x * 1.1 for x in line_range],
                        alpha=0.15, color='green', label='±10%')
         
