@@ -147,7 +147,7 @@ def plot_prediction_scatter(model=None):
     
     prop_names = PROP
     
-    train_d, val_d, test_d, scalers = joblib.load('models/surrogate/data.pth')
+    train_d, val_d, scalers = joblib.load('models/surrogate/data.pth')
     
     if model is None:
         model = ELM(mask_mode='zero', Pr=True, Ph=True)
@@ -158,11 +158,11 @@ def plot_prediction_scatter(model=None):
     model = model.to(device)
     model.eval()
     
-    test_dl = get_dataloader(test_d, batch_size=len(test_d[0]), augment=False)
+    val_dl = get_dataloader(val_d, batch_size=len(val_d[0]), augment=False)
     prop_original = np.empty((0, 5))
     pred_original = np.empty((0, 5))
     prop_mask_np = None
-    for batch in test_dl:
+    for batch in val_dl:
         id, comp, proc_bool, proc_scalar, phase_scalar, prop, elem_feat, proc_bool_mask, proc_scalar_mask, prop_mask = batch
 
         with torch.no_grad():
@@ -250,4 +250,4 @@ if __name__ == '__main__':
     # plot_training_errors()
     # plot_model_comparison()
     # plot_rl_best_scores()
-    plot_prediction_scatter(ELM(mask_mode = 'learned', Pr=True, Ph=True))
+    plot_prediction_scatter(TiAlloyNet())
