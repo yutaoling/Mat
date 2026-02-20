@@ -56,12 +56,12 @@ def compare(model, dataloader, results, index, scalers):
         mape = np.mean(np.abs((y_true - y_pred) / (y_true + 1e-8))) * 100
 
         print(f'On {prop_name}: R²={r2:.3f}\tMAE={mae:.1f}\tRMSE={rmse:.1f}\tMAPE={mape:.1f}%\tn={len(y_true)}')
-        results.loc[index] = [model_name, prop_name, r2, mae, rmse, mape, len(y_true)]
+        results.loc[index] = [index + 1, model_name, prop_name, r2, mae, rmse, mape, len(y_true)]
         index += 1
     return results, index
 
 def surrogate_compare():
-    results = pd.DataFrame(columns=['Model', 'Target', 'R2', 'MAE', 'RMSE', 'MAPE', 'N'])
+    results = pd.DataFrame(columns=['No.', 'Model', 'Target', 'R2', 'MAE', 'RMSE', 'MAPE', 'N'])
     index = 0
     
     train_d, val_d, scalers = joblib.load('models/surrogate/data.pth')
@@ -70,8 +70,9 @@ def surrogate_compare():
         for mask_mode in mask_modes:
             for model in MODEL_LIST(mask_mode = mask_mode):
                 results, index = compare(model, val_d, results, index, scalers)
-    model = TiAlloyNet().to(device)
-    results, index = compare(model, val_d, results, index, scalers)
+    for connect_mode in ['jump', 'emb', 'sep']:
+        model = TiAlloyNet(connect_mode=connect_mode).to(device)
+        results, index = compare(model, val_d, results, index, scalers)
     results.to_excel(f'results/surrogate_comparison.xlsx', index=False)
     
 if __name__ == "__main__":

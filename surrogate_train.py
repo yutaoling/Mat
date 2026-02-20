@@ -481,7 +481,7 @@ def get_model(model = None,
     return model, train_d, val_d, scalers
 
 if __name__ == '__main__':
-    '''
+    
     mask_modes = ['zero', 'learned', 'mean_dropout', 'sample_dropout']
     for mask_mode in mask_modes:
         for model in MODEL_LIST(mask_mode = mask_mode):
@@ -497,8 +497,9 @@ if __name__ == '__main__':
                 f'{model_dir}/data.pth',
                 resume=False,
                 train=True,
-                save_path=f'{log_dir}/train_{model_name}.txt')'''
-    for connect_mode in ['emb', 'sep']:
+                save_path=f'{log_dir}/train_{model_name}.txt')
+    
+    for connect_mode in ['jump', 'emb', 'sep']:
         model = TiAlloyNet(connect_mode=connect_mode).to(device)
         model_name = model.get_name()
         print(f"\nTraining model: {model_name}\n")

@@ -192,14 +192,14 @@ class ELM(nn.Module):
         self.mask_mode = mask_mode
         self.Pr = Pr
         self.Ph = Ph
-        self._n_in_fcnn = N_ELEM
+        self._n_in_dnn = N_ELEM
         if self.Pr:
-            self._n_in_fcnn += N_PROC_BOOL + N_PROC_SCALAR
+            self._n_in_dnn += N_PROC_BOOL + N_PROC_SCALAR
         if self.Ph:
-            self._n_in_fcnn += N_PHASE_SCALAR
-        self._n_fcnn = N_FC_NERON
+            self._n_in_dnn += N_PHASE_SCALAR
+        self._n_dnn = N_FC_NERON
 
-        self.fc1 = nn.Linear(self._n_in_fcnn, N_FC_NERON)
+        self.fc1 = nn.Linear(self._n_in_dnn, N_FC_NERON)
         self.fc2 = nn.Linear(N_FC_NERON, N_PROP)
         self.af = nn.LeakyReLU(LEAKY_RATE)
         
@@ -315,17 +315,15 @@ class ELM_CNN(nn.Module):
         self.mask_mode = mask_mode
 
         self._kernel_size = (1, N_ELEM_FEAT_P1)
-        self.conv1 = nn.Conv2d(in_channels=1, out_channels=N_ELEM_FEAT_P1, kernel_size=self._kernel_size)
-        self.bn_conv1 = nn.BatchNorm2d(N_ELEM_FEAT_P1)
-        self.conv2 = nn.Conv2d(in_channels=1, out_channels=N_ELEM_FEAT_P1, kernel_size=self._kernel_size)
-        self.bn_conv2 = nn.BatchNorm2d(N_ELEM_FEAT_P1)
+        self.conv = nn.Conv2d(in_channels=1, out_channels=N_ELEM_FEAT_P1, kernel_size=self._kernel_size)
+        self.bn_conv = nn.BatchNorm2d(N_ELEM_FEAT_P1)
         
         self._n_cnn_out = N_ELEM * N_ELEM_FEAT_P1
-        self._n_in_fcnn = self._n_cnn_out + N_PROC_BOOL + N_PROC_SCALAR + N_PHASE_SCALAR
-        self._n_fcnn = N_FC_NERON
+        self._n_in_dnn = self._n_cnn_out + N_PROC_BOOL + N_PROC_SCALAR + N_PHASE_SCALAR
+        self._n_dnn = N_FC_NERON
         
-        self.fc1 = nn.Linear(self._n_in_fcnn, self._n_fcnn)
-        self.fc2 = nn.Linear(self._n_fcnn, N_PROP)
+        self.fc1 = nn.Linear(self._n_in_dnn, self._n_dnn)
+        self.fc2 = nn.Linear(self._n_dnn, N_PROP)
         self.af = nn.LeakyReLU(LEAKY_RATE)
 
         if self.mask_mode == 'learned':
@@ -363,14 +361,10 @@ class ELM_CNN(nn.Module):
             proc_scalar = self.masked_layer(proc_scalar, proc_scalar_mask_reshaped, proc_scalar_mean)
             
         x = torch.cat([comp, elem_feat], dim=-1)
-        residual = x
         
-        x = self.af(self.bn_conv1(self.conv1(x)))
-        x = x.reshape(-1, 1, N_ELEM, N_ELEM_FEAT_P1)
-        x = self.af(self.bn_conv2(self.conv2(x)))
+        x = self.af(self.bn_conv(self.conv(x)))
         x = x.reshape(-1, 1, N_ELEM, N_ELEM_FEAT_P1)
         
-        x = x + residual
         x = x.view(-1, self._n_cnn_out)
         x = torch.cat([
             x,
@@ -386,113 +380,97 @@ class ELM_CNN(nn.Module):
         return f"ELM_CNN_{self.mask_mode}"
 
 
-class FCNN(nn.Module):
+class DNN(nn.Module):
     def __init__(self, mask_mode = 'zero', branch_mode = 'None', elem_feat = 'None'):
-        super(FCNN, self).__init__()
+        super(DNN, self).__init__()
         self.mask_mode = mask_mode
         self.branch_mode = branch_mode
         self.elem_feat = elem_feat
 
-        self._n_fcnn = N_FC_NERON
+        self._n_dnn = N_FC_NERON
 
         if self.elem_feat == 'None':
-            self._n_mid_fcnn = N_FC_NERON
+            self._n_mid_dnn = N_FC_NERON
             self.layer0 = nn.Sequential(
-                nn.Linear(N_ELEM + N_PROC_BOOL + N_PROC_SCALAR + N_PHASE_SCALAR, self._n_fcnn),
+                nn.Linear(N_ELEM + N_PROC_BOOL + N_PROC_SCALAR + N_PHASE_SCALAR, self._n_dnn),
                 nn.LeakyReLU(LEAKY_RATE),
-                nn.BatchNorm1d(self._n_fcnn),
-                nn.Dropout(DROP_RATE),
-                nn.Linear(self._n_fcnn, self._n_fcnn),
-                nn.LeakyReLU(LEAKY_RATE),
-                nn.BatchNorm1d(self._n_fcnn)
+                nn.BatchNorm1d(self._n_dnn),
             )
         elif self.elem_feat == 'Mean':
-            self._n_mid_fcnn = N_FC_NERON
+            self._n_mid_dnn = N_FC_NERON
             self.layer0 = nn.Sequential(
-                nn.Linear(N_ELEM + N_ELEM_FEAT + N_PROC_BOOL + N_PROC_SCALAR + N_PHASE_SCALAR, self._n_fcnn),
+                nn.Linear(N_ELEM + N_ELEM_FEAT + N_PROC_BOOL + N_PROC_SCALAR + N_PHASE_SCALAR, self._n_dnn),
                 nn.LeakyReLU(LEAKY_RATE),
-                nn.BatchNorm1d(self._n_fcnn),
-                nn.Dropout(DROP_RATE),
-                nn.Linear(self._n_fcnn, self._n_fcnn),
-                nn.LeakyReLU(LEAKY_RATE),
-                nn.BatchNorm1d(self._n_fcnn)
+                nn.BatchNorm1d(self._n_dnn),
             )
         elif self.elem_feat == 'CNN':
             self._n_cnn_out = N_ELEM * N_ELEM_FEAT_P1
-            self._n_mid_fcnn = self._n_cnn_out + N_PROC_BOOL + N_PROC_SCALAR + N_PHASE_SCALAR
+            self._n_mid_dnn = self._n_cnn_out + N_PROC_BOOL + N_PROC_SCALAR + N_PHASE_SCALAR
             self._kernel_size = (1, N_ELEM_FEAT_P1)
-            self.CNN0 = nn.Sequential(
+            self.CNN = nn.Sequential(
                 nn.Conv2d(in_channels=1, out_channels=N_ELEM_FEAT_P1, kernel_size=self._kernel_size),
                 nn.LeakyReLU(LEAKY_RATE),
                 nn.BatchNorm2d(N_ELEM_FEAT_P1),
                 nn.Dropout2d(DROP_RATE),
             )
-            self.CNN1 = nn.Sequential(
-                nn.Conv2d(in_channels=1, out_channels=N_ELEM_FEAT_P1, kernel_size=self._kernel_size),
-                nn.LeakyReLU(LEAKY_RATE),
-                nn.BatchNorm2d(N_ELEM_FEAT_P1),
-            )
 
         if self.branch_mode == 'None':
             self.layer1 = nn.Sequential(
-                nn.Linear(self._n_mid_fcnn, self._n_fcnn),
+                nn.Linear(self._n_mid_dnn, self._n_dnn),
                 nn.LeakyReLU(LEAKY_RATE),
-                nn.BatchNorm1d(self._n_fcnn),
-                nn.Linear(self._n_fcnn, self._n_fcnn),
-                nn.LeakyReLU(LEAKY_RATE),
-                nn.BatchNorm1d(self._n_fcnn),
-                nn.Linear(self._n_fcnn, N_PROP)
+                nn.BatchNorm1d(self._n_dnn),
+                nn.Linear(self._n_dnn, N_PROP)
             )
         elif branch_mode == 'MSHBranched':
             self._n_branch = N_BRANCH_NERON
             self.layer_m = nn.Sequential(
-                nn.Linear(self._n_mid_fcnn, self._n_branch),
+                nn.Linear(self._n_mid_dnn, self._n_branch),
+                nn.LeakyReLU(LEAKY_RATE),
                 nn.BatchNorm1d(self._n_branch),
-                nn.Linear(self._n_branch, self._n_branch),
                 nn.Linear(self._n_branch, 1)
             )
             self.layer_s = nn.Sequential(
-                nn.Linear(self._n_mid_fcnn, self._n_branch),
+                nn.Linear(self._n_mid_dnn, self._n_branch),
+                nn.LeakyReLU(LEAKY_RATE),
                 nn.BatchNorm1d(self._n_branch),
-                nn.Linear(self._n_branch, self._n_branch),
                 nn.Linear(self._n_branch, 3)
             )
             self.layer_h = nn.Sequential(
-                nn.Linear(self._n_mid_fcnn, self._n_branch),
+                nn.Linear(self._n_mid_dnn, self._n_branch),
+                nn.LeakyReLU(LEAKY_RATE),
                 nn.BatchNorm1d(self._n_branch),
-                nn.Linear(self._n_branch, self._n_branch),
                 nn.Linear(self._n_branch, 1)
             )
         elif branch_mode == 'FullyBranched':
             self._n_branch = N_BRANCH_NERON
             self.layer1 = nn.Sequential(
-                nn.Linear(self._n_mid_fcnn, self._n_branch),
+                nn.Linear(self._n_mid_dnn, self._n_branch),
+                nn.LeakyReLU(LEAKY_RATE),
                 nn.BatchNorm1d(self._n_branch),
-                nn.Linear(self._n_branch, self._n_branch),
                 nn.Linear(self._n_branch, 1)
             )
             self.layer2 = nn.Sequential(
-                nn.Linear(self._n_mid_fcnn, self._n_branch),
+                nn.Linear(self._n_mid_dnn, self._n_branch),
+                nn.LeakyReLU(LEAKY_RATE),
                 nn.BatchNorm1d(self._n_branch),
-                nn.Linear(self._n_branch, self._n_branch),
                 nn.Linear(self._n_branch, 1)
             )
             self.layer3 = nn.Sequential(
-                nn.Linear(self._n_mid_fcnn, self._n_branch),
+                nn.Linear(self._n_mid_dnn, self._n_branch),
+                nn.LeakyReLU(LEAKY_RATE),
                 nn.BatchNorm1d(self._n_branch),
-                nn.Linear(self._n_branch, self._n_branch),
                 nn.Linear(self._n_branch, 1)
             )
             self.layer4 = nn.Sequential(
-                nn.Linear(self._n_mid_fcnn, self._n_branch),
+                nn.Linear(self._n_mid_dnn, self._n_branch),
+                nn.LeakyReLU(LEAKY_RATE),
                 nn.BatchNorm1d(self._n_branch),
-                nn.Linear(self._n_branch, self._n_branch),
                 nn.Linear(self._n_branch, 1)
             )
             self.layer5 = nn.Sequential(
-                nn.Linear(self._n_mid_fcnn, self._n_branch),
+                nn.Linear(self._n_mid_dnn, self._n_branch),
+                nn.LeakyReLU(LEAKY_RATE),
                 nn.BatchNorm1d(self._n_branch),
-                nn.Linear(self._n_branch, self._n_branch),
                 nn.Linear(self._n_branch, 1)
             )
 
@@ -554,12 +532,8 @@ class FCNN(nn.Module):
             x = self.layer0(x)
         elif self.elem_feat == 'CNN':
             x = torch.cat([comp, elem_feat], dim=-1)
-            residual = x
-            x = self.CNN0(x)
+            x = self.CNN(x)
             x = x.reshape(-1, 1, N_ELEM, N_ELEM_FEAT_P1)
-            x = self.CNN1(x)
-            x = x.reshape(-1, 1, N_ELEM, N_ELEM_FEAT_P1)
-            x = x + residual
             x = x.view(-1, self._n_cnn_out)
             x = torch.cat([
                 x,
@@ -585,7 +559,7 @@ class FCNN(nn.Module):
 
         return x
     def get_name(self):
-        name = "FCNN"
+        name = "DNN"
         if self.elem_feat != 'None':
             name += f'_{self.elem_feat}'
         if self.branch_mode != 'None':
@@ -881,16 +855,17 @@ class TiAlloyNet(nn.Module):
 
 def MODEL_LIST(mask_mode: str) -> list:
     model_list = []
+    
     ELM_list = [ELM(mask_mode = mask_mode, Pr = Pr, Ph = Ph).to(device)\
          for Pr in [True, False] for Ph in [True, False]]
     ELM_list.append(ELM_Mean(mask_mode = mask_mode).to(device))
     ELM_list.append(ELM_CNN(mask_mode = mask_mode).to(device))
     model_list.extend(ELM_list)
 
-    FCNN_list = [FCNN(mask_mode = mask_mode, branch_mode = Branch_mode, elem_feat = elem_feat).to(device)\
+    DNN_list = [DNN(mask_mode = mask_mode, branch_mode = Branch_mode, elem_feat = elem_feat).to(device)\
          for Branch_mode in ['None', 'MSHBranched', 'FullyBranched']\
          for elem_feat in ['None', 'Mean', 'CNN']]
-    model_list.extend(FCNN_list)
+    model_list.extend(DNN_list)
     Attention_list = [Attention(mask_mode = mask_mode, branch_mode = Branch_mode).to(device)\
          for Branch_mode in ['None', 'MSHBranched', 'FullyBranched']]
     model_list.extend(Attention_list)
