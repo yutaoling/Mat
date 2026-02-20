@@ -116,12 +116,11 @@ class LearnedMaskedProc(nn.Module):
         x[:, idxs] = x[:, idxs] * m + (1 - m) * fill_vals
         return x
 
-    def forward(self, proc_bool, proc_scalar, phase_scalar, proc_bool_mask, proc_scalar_mask):
+    def forward(self, proc_bool, proc_scalar, proc_bool_mask, proc_scalar_mask):
         bs = proc_bool.size(0)
 
         pb = proc_bool
         ps = proc_scalar
-        ph = phase_scalar
 
         pb_mask = proc_bool_mask if proc_bool_mask is not None else torch.ones_like(pb)
         ps_mask = proc_scalar_mask if proc_scalar_mask is not None else torch.ones_like(ps)
@@ -185,10 +184,7 @@ class LearnedMaskedProc(nn.Module):
 
         ps = ps * ps_mask + (1 - ps_mask) * self.missing_proc_scalar_default.view(1, -1).expand(bs, -1)
 
-        if ph is not None:
-            ph = ph
-
-        return pb, ps, ph
+        return pb, ps
 
 class ELM(nn.Module):
     def __init__(self, mask_mode = 'zero', Pr = True, Ph = True):
@@ -232,9 +228,7 @@ class ELM(nn.Module):
         if self.mask_mode == 'learned':
             proc_bool_mask_r = proc_bool_mask.reshape(batch_size, -1) if proc_bool_mask is not None else None
             proc_scalar_mask_r = proc_scalar_mask.reshape(batch_size, -1) if proc_scalar_mask is not None else None
-            phase_scalar_r = phase_scalar.reshape(batch_size, -1) if phase_scalar is not None else None
-            proc_bool, proc_scalar, phase_scalar_r = self.learned_mask(proc_bool, proc_scalar, phase_scalar_r, proc_bool_mask_r, proc_scalar_mask_r)
-            phase_scalar = phase_scalar_r
+            proc_bool, proc_scalar = self.learned_mask(proc_bool, proc_scalar, proc_bool_mask_r, proc_scalar_mask_r)
         elif self.mask_mode in ['mean_dropout', 'sample_dropout']:
             proc_bool = proc_bool.reshape(batch_size, -1)
             proc_bool_mask_reshaped = proc_bool_mask.reshape(batch_size, -1) if proc_bool_mask is not None else None
@@ -260,9 +254,9 @@ class ELM(nn.Module):
         name += f'_{self.mask_mode}'
         return name
 
-class ELM_ElemFeat(nn.Module):
+class ELM_Mean(nn.Module):
     def __init__(self, mask_mode = 'zero',):
-        super(ELM_ElemFeat, self).__init__()
+        super(ELM_Mean, self).__init__()
         self.mask_mode = mask_mode
         
         self.fc1 = nn.Linear(N_ELEM + N_ELEM_FEAT + N_PROC_BOOL + N_PROC_SCALAR + N_PHASE_SCALAR, N_FC_NERON)
@@ -294,9 +288,7 @@ class ELM_ElemFeat(nn.Module):
         if self.mask_mode == 'learned':
             proc_bool_mask_r = proc_bool_mask.reshape(batch_size, -1) if proc_bool_mask is not None else None
             proc_scalar_mask_r = proc_scalar_mask.reshape(batch_size, -1) if proc_scalar_mask is not None else None
-            phase_scalar_r = phase_scalar.reshape(batch_size, -1) if phase_scalar is not None else None
-            proc_bool, proc_scalar, phase_scalar_r = self.learned_mask(proc_bool, proc_scalar, phase_scalar_r, proc_bool_mask_r, proc_scalar_mask_r)
-            phase_scalar = phase_scalar_r
+            proc_bool, proc_scalar = self.learned_mask(proc_bool, proc_scalar, proc_bool_mask_r, proc_scalar_mask_r)
         elif self.mask_mode in ['mean_dropout', 'sample_dropout']:
             proc_bool = proc_bool.reshape(batch_size, -1)
             proc_bool_mask_reshaped = proc_bool_mask.reshape(batch_size, -1) if proc_bool_mask is not None else None
@@ -315,7 +307,7 @@ class ELM_ElemFeat(nn.Module):
         x = self.fc2(x)
         return x
     def get_name(self):
-        return f"ELM_ElemFeat_{self.mask_mode}"
+        return f"ELM_Mean_{self.mask_mode}"
 
 class ELM_CNN(nn.Module):
     def __init__(self, mask_mode = 'zero',):
@@ -361,9 +353,7 @@ class ELM_CNN(nn.Module):
         if self.mask_mode == 'learned':
             proc_bool_mask_r = proc_bool_mask.reshape(batch_size, -1) if proc_bool_mask is not None else None
             proc_scalar_mask_r = proc_scalar_mask.reshape(batch_size, -1) if proc_scalar_mask is not None else None
-            phase_scalar_r = phase_scalar.reshape(batch_size, -1) if phase_scalar is not None else None
-            proc_bool, proc_scalar, phase_scalar_r = self.learned_mask(proc_bool, proc_scalar, phase_scalar_r, proc_bool_mask_r, proc_scalar_mask_r)
-            phase_scalar = phase_scalar_r
+            proc_bool, proc_scalar = self.learned_mask(proc_bool, proc_scalar, proc_bool_mask_r, proc_scalar_mask_r)
         elif self.mask_mode in ['mean_dropout', 'sample_dropout']:
             proc_bool = proc_bool.reshape(batch_size, -1)
             proc_bool_mask_reshaped = proc_bool_mask.reshape(batch_size, -1) if proc_bool_mask is not None else None
@@ -539,9 +529,7 @@ class FCNN(nn.Module):
         if self.mask_mode == 'learned':
             proc_bool_mask_r = proc_bool_mask.reshape(batch_size, -1) if proc_bool_mask is not None else None
             proc_scalar_mask_r = proc_scalar_mask.reshape(batch_size, -1) if proc_scalar_mask is not None else None
-            phase_scalar_r = phase_scalar.reshape(batch_size, -1) if phase_scalar is not None else None
-            proc_bool, proc_scalar, phase_scalar_r = self.learned_mask(proc_bool, proc_scalar, phase_scalar_r, proc_bool_mask_r, proc_scalar_mask_r)
-            phase_scalar = phase_scalar_r
+            proc_bool, proc_scalar = self.learned_mask(proc_bool, proc_scalar, proc_bool_mask_r, proc_scalar_mask_r)
         elif self.mask_mode in ['mean_dropout', 'sample_dropout']:
             proc_bool = proc_bool.reshape(batch_size, -1)
             proc_bool_mask_reshaped = proc_bool_mask.reshape(batch_size, -1) if proc_bool_mask is not None else None
@@ -722,7 +710,7 @@ class Attention(nn.Module):
         if self.mask_mode == 'learned':
             proc_bool_mask_r = proc_bool_mask.reshape(batch_size, -1) if proc_bool_mask is not None else None
             proc_scalar_mask_r = proc_scalar_mask.reshape(batch_size, -1) if proc_scalar_mask is not None else None
-            proc_bool, proc_scalar, _ = self.learned_mask(proc_bool, proc_scalar, None, proc_bool_mask_r, proc_scalar_mask_r)
+            proc_bool, proc_scalar = self.learned_mask(proc_bool, proc_scalar, proc_bool_mask_r, proc_scalar_mask_r)
         elif self.mask_mode in ['mean_dropout', 'sample_dropout']:
             proc_bool_mask_resh = proc_bool_mask.reshape(batch_size, -1) if proc_bool_mask is not None else None
             proc_bool = self.masked_layer(proc_bool, proc_bool_mask_resh, proc_bool_mean)
@@ -800,123 +788,54 @@ class Attention(nn.Module):
 class TiAlloyNet(nn.Module):
     def __init__(self):
         super(TiAlloyNet, self).__init__()
+        
+        self.fc1 = nn.Linear(N_ELEM + N_PROC_BOOL + N_PROC_SCALAR, N_FC_NERON)
+        self.fc2 = nn.Linear(N_FC_NERON + N_ELEM_FEAT + N_PHASE_SCALAR, N_FC_NERON)
+        self.out1 = nn.Linear(N_FC_NERON, 3)
+        self.out2 = nn.Linear(N_FC_NERON, 2)
+
+        self.af = nn.LeakyReLU(LEAKY_RATE)
 
         self.learned_mask = LearnedMaskedProc()
 
-        self._kernel_size = (1, N_ELEM_FEAT_P1)
-        self.conv1 = nn.Conv2d(in_channels=1, out_channels=N_ELEM_FEAT_P1, kernel_size=self._kernel_size)
-        self.bn_conv1 = nn.BatchNorm2d(N_ELEM_FEAT_P1)
-        self.conv2 = nn.Conv2d(in_channels=1, out_channels=N_ELEM_FEAT_P1, kernel_size=self._kernel_size)
-        self.bn_conv2 = nn.BatchNorm2d(N_ELEM_FEAT_P1)
-
-        self._n_cnn_out = N_ELEM * N_ELEM_FEAT_P1
-
-        self.proc_in_dim = N_PROC_BOOL + N_PROC_SCALAR + N_PROC_BOOL + N_PROC_SCALAR
-        self.proc_mlp = nn.Sequential(
-            nn.Linear(self.proc_in_dim, N_BRANCH_NERON),
-            nn.BatchNorm1d(N_BRANCH_NERON),
-            nn.LeakyReLU(LEAKY_RATE),
-            nn.Dropout(DROP_RATE),
-            nn.Linear(N_BRANCH_NERON, N_BRANCH_NERON),
-            nn.BatchNorm1d(N_BRANCH_NERON),
-            nn.LeakyReLU(LEAKY_RATE),
-        )
-
-        self.phase_proj = nn.Sequential(
-            nn.Linear(N_PHASE_SCALAR, N_BRANCH_NERON),
-            nn.BatchNorm1d(N_BRANCH_NERON),
-            nn.LeakyReLU(LEAKY_RATE),
-        )
-
-        self.fusion_dim = self._n_cnn_out + N_BRANCH_NERON + N_BRANCH_NERON
-        self.fc1 = nn.Linear(self.fusion_dim, N_FC_NERON)
-        self.bn1 = nn.BatchNorm1d(N_FC_NERON)
-        self.fc2 = nn.Linear(N_FC_NERON, N_FC_NERON)
-        self.bn2 = nn.BatchNorm1d(N_FC_NERON)
-
-        self.head_strength = nn.Sequential(
-            nn.Linear(N_FC_NERON, N_BRANCH_NERON),
-            nn.BatchNorm1d(N_BRANCH_NERON),
-            nn.LeakyReLU(LEAKY_RATE),
-            nn.Linear(N_BRANCH_NERON, 3),
-        )
-        self.head_modulus = nn.Sequential(
-            nn.Linear(N_FC_NERON, N_BRANCH_NERON),
-            nn.BatchNorm1d(N_BRANCH_NERON),
-            nn.LeakyReLU(LEAKY_RATE),
-            nn.Linear(N_BRANCH_NERON, 1),
-        )
-        self.head_ductility = nn.Sequential(
-            nn.Linear(N_FC_NERON, N_BRANCH_NERON),
-            nn.BatchNorm1d(N_BRANCH_NERON),
-            nn.LeakyReLU(LEAKY_RATE),
-            nn.Dropout(DROP_RATE),
-            nn.Linear(N_BRANCH_NERON, 1),
-        )
-
-        self.af = nn.LeakyReLU(LEAKY_RATE)
-        self.dropout = nn.Dropout(DROP_RATE)
-
         self.reset_parameters()
-
+        
         self.lr = LEARNING_RATE
-        self.optimizer = optim.Adam(self.parameters(), lr=self.lr, weight_decay=1e-4)
-
+        self.optimizer = optim.Adam(self.parameters(), lr=self.lr)
+    
     def reset_parameters(self):
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                init.kaiming_uniform_(m.weight, nonlinearity='relu')
-                if m.bias is not None:
-                    m.bias.data.zero_()
-            elif isinstance(m, nn.Linear):
-                init.xavier_uniform_(m.weight)
-                if m.bias is not None:
-                    m.bias.data.zero_()
-            elif isinstance(m, (nn.BatchNorm1d, nn.BatchNorm2d)):
-                if m.weight is not None:
-                    m.weight.data.fill_(1.)
-                if m.bias is not None:
-                    m.bias.data.zero_()
+        self.fc1.weight.data.uniform_(*hidden_init(self.fc1))
+        self.fc2.weight.data.uniform_(*hidden_init(self.fc2))
+        self.fc2.weight.data.uniform_(-3e-3, 3e-3)
 
     def forward(self, comp, elem_feat, proc_bool, proc_scalar, phase_scalar, proc_bool_mask, proc_scalar_mask, scalers = None):
         batch_size = comp.size(0)
+        proc_bool_mean = torch.tensor(scalers[1].mean_ if scalers else np.zeros(N_PROC_BOOL), dtype=torch.float32, device=comp.device)
+        proc_scalar_mean = torch.tensor(scalers[2].mean_ if scalers else np.zeros(N_PROC_SCALAR), dtype=torch.float32, device=comp.device)
+        proc_bool = proc_bool.reshape(batch_size, -1)
+        proc_scalar = proc_scalar.reshape(batch_size, -1)
+        
+        proc_bool_mask_r = proc_bool_mask.reshape(batch_size, -1) if proc_bool_mask is not None else None
+        proc_scalar_mask_r = proc_scalar_mask.reshape(batch_size, -1) if proc_scalar_mask is not None else None
+        proc_bool, proc_scalar = self.learned_mask(proc_bool, proc_scalar, proc_bool_mask_r, proc_scalar_mask_r)
 
-        pb = proc_bool.reshape(batch_size, -1)
-        ps = proc_scalar.reshape(batch_size, -1)
-        ph = phase_scalar.reshape(batch_size, -1)
-        pb_mask = proc_bool_mask.reshape(batch_size, -1)
-        ps_mask = proc_scalar_mask.reshape(batch_size, -1)
-
-        pb, ps, ph = self.learned_mask(pb, ps, ph, pb_mask, ps_mask)
-
-        proc_vec = torch.cat([pb, ps, pb_mask, ps_mask], dim=-1)
-        proc_emb = self.proc_mlp(proc_vec)
-        phase_emb = self.phase_proj(ph)
-
-        x = torch.cat([comp, elem_feat], dim=-1)
-        residual = x
-
-        x = self.af(self.bn_conv1(self.conv1(x)))
-        x = x.reshape(-1, 1, N_ELEM, N_ELEM_FEAT_P1)
-        x = self.af(self.bn_conv2(self.conv2(x)))
-        x = x.reshape(-1, 1, N_ELEM, N_ELEM_FEAT_P1)
-        x = x + residual
-        comp_emb = x.view(-1, self._n_cnn_out)
-
-        x = torch.cat([comp_emb, proc_emb, phase_emb], dim=-1)
-        x = self.af(self.bn1(self.fc1(x)))
-        x = self.dropout(x)
-        x = self.af(self.bn2(self.fc2(x)))
-
-        ym = self.head_modulus(x)
-        strength = self.head_strength(x)
-        el = self.head_ductility(x)
-
-        ys = strength[:, 0:1]
-        uts = strength[:, 1:2]
-        hv = strength[:, 2:3]
+        mef = torch.sum(comp.squeeze(-1).squeeze(1).unsqueeze(-1) * elem_feat.squeeze(1), dim=1)
+        x = torch.cat([comp.reshape(-1, N_ELEM), 
+            proc_bool.reshape(-1, N_PROC_BOOL), 
+            proc_scalar.reshape(-1, N_PROC_SCALAR),], dim=-1)
+        x = self.af(self.fc1(x))
+        out1 = self.out1(x)
+        x = torch.cat([x, mef, phase_scalar.reshape(-1, N_PHASE_SCALAR)], dim=-1)
+        x = self.af(self.fc2(x))
+        out2 = self.out2(x)
+        ym = out2[:, 0:1]
+        ys = out1[:, 0:1]
+        uts = out1[:, 1:2]
+        el = out1[:, 2:3]
+        hv = out2[:, 1:2]
 
         out = torch.cat([ym, ys, uts, el, hv], dim=-1)
+
         return out
 
     def get_name(self):
@@ -925,7 +844,7 @@ def MODEL_LIST(mask_mode: str) -> list:
     model_list = []
     ELM_list = [ELM(mask_mode = mask_mode, Pr = Pr, Ph = Ph).to(device)\
          for Pr in [True, False] for Ph in [True, False]]
-    ELM_list.append(ELM_ElemFeat(mask_mode = mask_mode).to(device))
+    ELM_list.append(ELM_Mean(mask_mode = mask_mode).to(device))
     ELM_list.append(ELM_CNN(mask_mode = mask_mode).to(device))
     model_list.extend(ELM_list)
 
@@ -956,5 +875,7 @@ if __name__ == '__main__':
         model_list = MODEL_LIST(mask_mode)
         for model in model_list:
             print(f"{model.get_name()} {list(model(*test_input).size())}")
+    model = TiAlloyNet().to(device)
+    print(f"{model.get_name()} {list(model(*test_input).size())}")
 
     
