@@ -188,6 +188,7 @@ def plot_prediction_scatter(model=None):
     
     fig, axes = plt.subplots(1, 5, figsize=(15, 3))
     axes = axes.flatten()
+    full_prop_names = ['Young\'s Modulus', 'Yield Strength', 'Ultimate Tensile Strength', 'Elongation', 'Vickers Hardness']
     units = ['GPa', 'MPa', 'MPa', '%', 'HV']
     
     for i, (prop_name, unit) in enumerate(zip(prop_names, units)):
@@ -250,4 +251,4 @@ if __name__ == '__main__':
     # plot_training_errors()
     # plot_model_comparison()
     # plot_rl_best_scores()
-    plot_prediction_scatter(TiAlloyNet())
+    plot_prediction_scatter(TiAlloyNet(connect_mode='jump'))

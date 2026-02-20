@@ -786,13 +786,26 @@ class Attention(nn.Module):
 
 
 class TiAlloyNet(nn.Module):
-    def __init__(self):
+    def __init__(self, connect_mode = 'jump'):
         super(TiAlloyNet, self).__init__()
+        self.connect_mode = connect_mode
         
-        self.fc1 = nn.Linear(N_ELEM + N_PROC_BOOL + N_PROC_SCALAR, N_FC_NERON)
-        self.fc2 = nn.Linear(N_FC_NERON + N_ELEM_FEAT + N_PHASE_SCALAR, N_FC_NERON)
-        self.out1 = nn.Linear(N_FC_NERON, 3)
-        self.out2 = nn.Linear(N_FC_NERON, 2)
+        if self.connect_mode == 'jump':
+            self.fc1 = nn.Linear(N_ELEM + N_PROC_BOOL + N_PROC_SCALAR, N_FC_NERON)
+            self.fc2 = nn.Linear(N_FC_NERON + N_ELEM_FEAT + N_PHASE_SCALAR, N_FC_NERON)
+            self.out1 = nn.Linear(N_FC_NERON, 3)
+            self.out2 = nn.Linear(N_FC_NERON, 2)
+        elif self.connect_mode == 'emb':
+            self.fc1 = nn.Linear(N_ELEM + N_PROC_BOOL + N_PROC_SCALAR, N_FC_NERON)
+            self.fc2 = nn.Linear(N_ELEM_FEAT + N_PHASE_SCALAR, N_FC_NERON)
+            self.fc3 = nn.Linear(N_FC_NERON * 2, N_FC_NERON)
+            self.out1 = nn.Linear(N_FC_NERON, 3)
+            self.out2 = nn.Linear(N_FC_NERON, 2)
+        elif self.connect_mode == 'sep':
+            self.fc1 = nn.Linear(N_ELEM + N_PROC_BOOL + N_PROC_SCALAR, N_FC_NERON)
+            self.fc2 = nn.Linear(N_ELEM + N_ELEM_FEAT + N_PROC_BOOL + N_PROC_SCALAR + N_PHASE_SCALAR, N_FC_NERON)
+            self.out1 = nn.Linear(N_FC_NERON, 3)
+            self.out2 = nn.Linear(N_FC_NERON, 2)
 
         self.af = nn.LeakyReLU(LEAKY_RATE)
 
@@ -820,26 +833,52 @@ class TiAlloyNet(nn.Module):
         proc_bool, proc_scalar = self.learned_mask(proc_bool, proc_scalar, proc_bool_mask_r, proc_scalar_mask_r)
 
         mef = torch.sum(comp.squeeze(-1).squeeze(1).unsqueeze(-1) * elem_feat.squeeze(1), dim=1)
-        x = torch.cat([comp.reshape(-1, N_ELEM), 
-            proc_bool.reshape(-1, N_PROC_BOOL), 
-            proc_scalar.reshape(-1, N_PROC_SCALAR),], dim=-1)
-        x = self.af(self.fc1(x))
-        out1 = self.out1(x)
-        x = torch.cat([x, mef, phase_scalar.reshape(-1, N_PHASE_SCALAR)], dim=-1)
-        x = self.af(self.fc2(x))
-        out2 = self.out2(x)
+        if self.connect_mode == 'jump':
+            x = torch.cat([comp.reshape(-1, N_ELEM), 
+                proc_bool.reshape(-1, N_PROC_BOOL), 
+                proc_scalar.reshape(-1, N_PROC_SCALAR),], dim=-1)
+            x = self.af(self.fc1(x))
+            out1 = self.out1(x)
+            x = torch.cat([x, mef, phase_scalar.reshape(-1, N_PHASE_SCALAR)], dim=-1)
+            x = self.af(self.fc2(x))
+            out2 = self.out2(x)
+        elif self.connect_mode == 'emb':
+            x1 = torch.cat([comp.reshape(-1, N_ELEM), 
+                proc_bool.reshape(-1, N_PROC_BOOL), 
+                proc_scalar.reshape(-1, N_PROC_SCALAR),], dim=-1)
+            x1 = self.af(self.fc1(x1))
+            out1 = self.out1(x1)
+            x2 = torch.cat([mef, phase_scalar.reshape(-1, N_PHASE_SCALAR)], dim=-1)
+            x2 = self.af(self.fc2(x2))
+            x = torch.cat([x1, x2], dim=-1)
+            x = self.af(self.fc3(x))
+            out2 = self.out2(x)
+        elif self.connect_mode == 'sep':
+            x1 = torch.cat([comp.reshape(-1, N_ELEM), 
+                proc_bool.reshape(-1, N_PROC_BOOL), 
+                proc_scalar.reshape(-1, N_PROC_SCALAR),], dim=-1)
+            x1 = self.af(self.fc1(x1))
+            out1 = self.out1(x1)
+            x2 = torch.cat([comp.reshape(-1, N_ELEM), 
+                mef, 
+                proc_bool.reshape(-1, N_PROC_BOOL), 
+                proc_scalar.reshape(-1, N_PROC_SCALAR),
+                phase_scalar.reshape(-1, N_PHASE_SCALAR)], dim=-1)
+            x2 = self.af(self.fc2(x2))
+            out2 = self.out2(x2)
+
         ym = out2[:, 0:1]
         ys = out1[:, 0:1]
         uts = out1[:, 1:2]
         el = out1[:, 2:3]
         hv = out2[:, 1:2]
-
         out = torch.cat([ym, ys, uts, el, hv], dim=-1)
 
         return out
 
     def get_name(self):
-        return "TiAlloyNet"
+        return f"TiAlloyNet_{self.connect_mode}"
+
 def MODEL_LIST(mask_mode: str) -> list:
     model_list = []
     ELM_list = [ELM(mask_mode = mask_mode, Pr = Pr, Ph = Ph).to(device)\
@@ -855,7 +894,6 @@ def MODEL_LIST(mask_mode: str) -> list:
     Attention_list = [Attention(mask_mode = mask_mode, branch_mode = Branch_mode).to(device)\
          for Branch_mode in ['None', 'MSHBranched', 'FullyBranched']]
     model_list.extend(Attention_list)
-    # model_list.append(TiAlloyNet().to(device))
 
     return model_list
 
@@ -875,7 +913,9 @@ if __name__ == '__main__':
         model_list = MODEL_LIST(mask_mode)
         for model in model_list:
             print(f"{model.get_name()} {list(model(*test_input).size())}")
-    model = TiAlloyNet().to(device)
-    print(f"{model.get_name()} {list(model(*test_input).size())}")
+    connect_modes = ['jump', 'emb', 'sep']
+    for connect_mode in connect_modes:
+        model = TiAlloyNet(connect_mode).to(device)
+        print(f"{model.get_name()} {list(model(*test_input).size())}")
 
     

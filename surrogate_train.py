@@ -498,17 +498,18 @@ if __name__ == '__main__':
                 resume=False,
                 train=True,
                 save_path=f'{log_dir}/train_{model_name}.txt')'''
-    model = TiAlloyNet().to(device)
-    model_name = model.get_name()
-    print(f"\nTraining model: {model_name}\n")
-    model_dir = f'models/surrogate'
-    log_dir = f'logs/surrogate'
-    os.makedirs(model_dir, exist_ok=True)
-    os.makedirs(log_dir, exist_ok=True)
-    
-    get_model(model,
-        f'{model_dir}/model_{model_name}.pth',
-        f'{model_dir}/data.pth',
-        resume=False,
-        train=True,
-        save_path=f'{log_dir}/train_{model_name}.txt')
+    for connect_mode in ['emb', 'sep']:
+        model = TiAlloyNet(connect_mode=connect_mode).to(device)
+        model_name = model.get_name()
+        print(f"\nTraining model: {model_name}\n")
+        model_dir = f'models/surrogate'
+        log_dir = f'logs/surrogate'
+        os.makedirs(model_dir, exist_ok=True)
+        os.makedirs(log_dir, exist_ok=True)
+        
+        get_model(model,
+            f'{model_dir}/model_{model_name}.pth',
+            f'{model_dir}/data.pth',
+            resume=False,
+            train=True,
+            save_path=f'{log_dir}/train_{model_name}.txt')
