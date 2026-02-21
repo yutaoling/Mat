@@ -251,4 +251,4 @@ if __name__ == '__main__':
     # plot_training_errors()
     # plot_model_comparison()
     # plot_rl_best_scores()
-    plot_prediction_scatter(TiAlloyNet(connect_mode='sep'))
+    plot_prediction_scatter(TiAlloyNet(connect_mode='emb'))
