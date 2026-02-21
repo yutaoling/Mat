@@ -780,6 +780,17 @@ class TiAlloyNet(nn.Module):
             self.fc2 = nn.Linear(N_ELEM + N_ELEM_FEAT + N_PROC_BOOL + N_PROC_SCALAR + N_PHASE_SCALAR, N_FC_NERON)
             self.out1 = nn.Linear(N_FC_NERON, 3)
             self.out2 = nn.Linear(N_FC_NERON, 2)
+        elif self.connect_mode == 'sep_all':
+            self.fc1 = nn.Linear(N_ELEM + N_ELEM_FEAT + N_PROC_BOOL + N_PROC_SCALAR + N_PHASE_SCALAR, N_FC_NERON)
+            self.fc2 = nn.Linear(N_ELEM + N_ELEM_FEAT + N_PROC_BOOL + N_PROC_SCALAR + N_PHASE_SCALAR, N_FC_NERON)
+            self.fc3 = nn.Linear(N_ELEM + N_ELEM_FEAT + N_PROC_BOOL + N_PROC_SCALAR + N_PHASE_SCALAR, N_FC_NERON)
+            self.fc4 = nn.Linear(N_ELEM + N_ELEM_FEAT + N_PROC_BOOL + N_PROC_SCALAR + N_PHASE_SCALAR, N_FC_NERON)
+            self.fc5 = nn.Linear(N_ELEM + N_ELEM_FEAT + N_PROC_BOOL + N_PROC_SCALAR + N_PHASE_SCALAR, N_FC_NERON)
+            self.out1 = nn.Linear(N_FC_NERON, 1)
+            self.out2 = nn.Linear(N_FC_NERON, 1)
+            self.out3 = nn.Linear(N_FC_NERON, 1)
+            self.out4 = nn.Linear(N_FC_NERON, 1)
+            self.out5 = nn.Linear(N_FC_NERON, 1)
 
         self.af = nn.LeakyReLU(LEAKY_RATE)
 
@@ -807,6 +818,24 @@ class TiAlloyNet(nn.Module):
         proc_bool, proc_scalar = self.learned_mask(proc_bool, proc_scalar, proc_bool_mask_r, proc_scalar_mask_r)
 
         mef = torch.sum(comp.squeeze(-1).squeeze(1).unsqueeze(-1) * elem_feat.squeeze(1), dim=1)
+        if self.connect_mode == 'sep_all':
+            x = torch.cat([comp.reshape(-1, N_ELEM), 
+                mef,
+                proc_bool.reshape(-1, N_PROC_BOOL),
+                proc_scalar.reshape(-1, N_PROC_SCALAR),
+                phase_scalar.reshape(-1, N_PHASE_SCALAR)], dim=-1)
+            x1 = self.af(self.fc1(x))
+            x2 = self.af(self.fc2(x))
+            x3 = self.af(self.fc3(x))
+            x4 = self.af(self.fc4(x))
+            x5 = self.af(self.fc5(x))
+            out1 = self.out1(x1)
+            out2 = self.out2(x2)
+            out3 = self.out3(x3)
+            out4 = self.out4(x4)
+            out5 = self.out5(x5)
+            out = torch.cat([out1, out2, out3, out4, out5], dim=-1)
+            return out
         if self.connect_mode == 'jump':
             x = torch.cat([comp.reshape(-1, N_ELEM), 
                 proc_bool.reshape(-1, N_PROC_BOOL), 
@@ -888,7 +917,7 @@ if __name__ == '__main__':
         model_list = MODEL_LIST(mask_mode)
         for model in model_list:
             print(f"{model.get_name()} {list(model(*test_input).size())}")
-    connect_modes = ['jump', 'emb', 'sep']
+    connect_modes = ['jump', 'emb', 'sep', 'sep_all']
     for connect_mode in connect_modes:
         model = TiAlloyNet(connect_mode).to(device)
         print(f"{model.get_name()} {list(model(*test_input).size())}")
