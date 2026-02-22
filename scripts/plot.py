@@ -226,7 +226,7 @@ def plot_prediction_scatter(model=None):
         
         ax.set_xlabel(f'Actual {prop_name} ({unit})', fontsize=10)
         ax.set_ylabel(f'Predicted {prop_name} ({unit})', fontsize=10)
-        ax.set_title(f'{prop_name}', fontsize=12, fontweight='bold')
+        ax.set_title(f'{full_prop_names[i]}', fontsize=12, fontweight='bold')
         ax.legend(loc='lower right', fontsize=6)
         ax.set_xlim(line_range)
         ax.set_ylim(line_range)

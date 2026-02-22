@@ -12,7 +12,7 @@ from collections import deque
 import matplotlib.pyplot as plt
 import warnings
 
-from environment import *
+from rl_env import *
 from buffer import ReplayBuffer
 
 def hidden_init(layer):

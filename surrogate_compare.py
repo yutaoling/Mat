@@ -70,7 +70,7 @@ def surrogate_compare():
         for mask_mode in mask_modes:
             for model in MODEL_LIST(mask_mode = mask_mode):
                 results, index = compare(model, val_d, results, index, scalers)
-    for connect_mode in ['jump', 'emb', 'sep']:
+    for connect_mode in ['jump', 'emb', 'sep', 'sep_all']:
         model = TiAlloyNet(connect_mode=connect_mode).to(device)
         results, index = compare(model, val_d, results, index, scalers)
     results.to_excel(f'results/surrogate_comparison.xlsx', index=False)

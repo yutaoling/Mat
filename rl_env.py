@@ -1,9 +1,3 @@
-'''
-    RL environment with a GPR as an internally maintained surrogate.
-    The immediate rewards are from the surrogate. Only after the RL
-    proposition will the surrogate be updated to capture the current
-    relationship between the experimented xs and ys.
-'''
 from __future__ import annotations
 from collections import namedtuple
 import math
@@ -19,13 +13,13 @@ from sklearn.gaussian_process.kernels import Matern
 from bayes_opt.util import ensure_rng
 import torch
 
-from surroagate_train import get_model, device, N_PROP
+from surrogate_train import get_model, device, N_PROP
 from surrogate_model import N_PROC_BOOL, N_PROC_SCALAR, N_PHASE_SCALAR
 from rl_proc_constants import (
     DEF_TEMP_CANDIDATES, DEF_TEMP_MAX, DEF_STRAIN_CANDIDATES, DEF_STRAIN_MAX,
     HT1_TEMP_CANDIDATES, HT1_TEMP_MAX, HT1_TIME_CANDIDATES, HT1_TIME_MAX,
     HT2_TEMP_CANDIDATES, HT2_TEMP_MAX, HT2_TIME_CANDIDATES, HT2_TIME_MAX,
-    COOLING_METHODS, MAX_PROC_ACTION_SPACE, EPISODE_COUNT_MAX, PHASE_NORMALIZATION
+    COOLING_METHODS_1, COOLING_METHODS_2, MAX_PROC_ACTION_SPACE, EPISODE_COUNT_MAX, PHASE_NORMALIZATION
 )
 
 ''' botorch GPR part, if needed '''
@@ -164,99 +158,18 @@ ROUND_DIGIT = 5
 STATE_DELIMETER_CHAR = '*'
 
 # TODO move get_ground_truth_func and get_mo_ground_truth_func -> utils.py
-def get_ground_truth_func(model_path = 'model\\model.pth', data_path = 'model\\data.pth'):
-    '''
-        Return the func that maps a composition -> a mechanical property (UTS / YS).
-        保持向后兼容，仅使用成分（工艺参数设为默认值）
-    '''
-    from model_env import FCNN_Model
-    # 抑制 sklearn 版本不匹配警告
-    with warnings.catch_warnings():
-        from sklearn.base import InconsistentVersionWarning
-        warnings.filterwarnings('ignore', category=InconsistentVersionWarning)
-        model, d, scalers = get_model(model=FCNN_Model(), default_model_pth=model_path, default_data_pth=data_path, resume=True, train=False)
-    model.eval()    # NOTE important
 
-    # 检查scalers数量
-    if len(scalers) < 5:
-        raise ValueError(f'scalers数量不足: 期望至少5个，实际{len(scalers)}个')
-    
-    comp_scaler = scalers[0]
-    proc_bool_scaler = scalers[1]
-    proc_scalar_scaler = scalers[2]
-    phase_scalar_scaler = scalers[3]
-    prop_scaler = scalers[4]
-    elem_ft = d[-1]
-    
-    # 检查comp_scaler期望的特征数
-    if hasattr(comp_scaler, 'n_features_in_'):
-        if comp_scaler.n_features_in_ != ELEM_N:
-            raise ValueError(f'成分scaler维度不匹配: 期望{ELEM_N}维，实际{comp_scaler.n_features_in_}维。'
-                           f'这可能是因为使用了旧版本的模型文件。请使用新的模型文件或重新训练模型。')
-
-    def _func(x):
-        ''' maps a composition (a list with the sumation of 1.) to its mechanical property prediction '''
-        x = np.array(x, dtype=np.float32)
-        # 确保成分是19维
-        if len(x) != ELEM_N:
-            raise ValueError(f'成分维度错误: 期望{ELEM_N}维，实际{len(x)}维。成分: {x}')
-        
-        # 转换为百分比格式（如果输入是归一化的）
-        x = (x * COMP_MULTIPLIER).round(ROUND_DIGIT)
-        _comp = x.reshape(1, -1)
-        
-        # 确保维度匹配
-        if hasattr(comp_scaler, 'n_features_in_'):
-            expected_dim = comp_scaler.n_features_in_
-            if _comp.shape[1] != expected_dim:
-                # 如果维度不匹配，尝试修复
-                if _comp.shape[1] == expected_dim + 1:
-                    # 可能是多了一维，取前expected_dim维
-                    _comp = _comp[:, :expected_dim]
-                elif _comp.shape[1] == expected_dim - 1:
-                    # 可能是少了一维，填充0
-                    _comp = np.pad(_comp, ((0, 0), (0, 1)), mode='constant', constant_values=0.0)
-                else:
-                    raise ValueError(f'成分维度不匹配: scaler期望{expected_dim}维，实际{_comp.shape[1]}维')
-        _comp = comp_scaler.transform(_comp)
-
-        # 使用默认工艺参数（全0）
-        _proc_bool = np.zeros((1, N_PROC_BOOL), dtype=np.float32)
-        _proc_scalar = np.zeros((1, N_PROC_SCALAR), dtype=np.float32)
-        # calculate_phase_scalar需要归一化格式（0-1），但x已经是百分比格式，需要转换回去
-        x_normalized = x / COMP_MULTIPLIER  # 转换回归一化格式
-        _phase_scalar = calculate_phase_scalar(x_normalized).reshape(1, -1)
-        
-        _proc_bool = proc_bool_scaler.transform(_proc_bool)
-        _proc_scalar = proc_scalar_scaler.transform(_proc_scalar)
-        _phase_scalar = phase_scalar_scaler.transform(_phase_scalar)
-
-        # 使用实际的成分维度（经过scaler处理后的维度）
-        comp_dim = _comp.shape[1]
-        _comp = torch.tensor(_comp, dtype=torch.float32).reshape(1, 1, comp_dim, 1).to(device)
-        elem_t = torch.tensor(elem_ft, dtype=torch.float32).reshape(1, 1, *(elem_ft.shape)).to(device)
-        _proc_bool = torch.tensor(_proc_bool, dtype=torch.float32).reshape(1, 1, N_PROC_BOOL, 1).to(device)
-        _proc_scalar = torch.tensor(_proc_scalar, dtype=torch.float32).reshape(1, 1, N_PROC_SCALAR, 1).to(device)
-        _phase_scalar = torch.tensor(_phase_scalar, dtype=torch.float32).reshape(1, 1, N_PHASE_SCALAR, 1).to(device)
-
-        _prop = model(_comp, elem_t, _proc_bool, _proc_scalar, _phase_scalar).detach().cpu().numpy()
-        _prop = prop_scaler.inverse_transform(_prop)
-
-        return _prop[0]  # 确保返回单个标量值而不是数组
-    
-    return _func
-
-def get_ground_truth_func_with_proc(model_path = 'models/surrogate/model_multi.pth', data_path = 'models/surrogate/data_multi.pth'):
+def get_ground_truth_func_with_proc(model_path = 'models/surrogate/model_TiAlloyNet_sep.pth', data_path = 'models/surrogate/data.pth'):
     '''
         Return the func that maps (composition, proc_bool, proc_scalar, phase_scalar) -> mechanical property.
         支持完整工艺参数输入
     '''
-    from model_env import FCNN_Model
+    from surrogate_model import TiAlloyNet
     # 抑制 sklearn 版本不匹配警告
     with warnings.catch_warnings():
         from sklearn.base import InconsistentVersionWarning
         warnings.filterwarnings('ignore', category=InconsistentVersionWarning)
-        model, d, scalers = get_model(model=FCNN_Model(), default_model_pth=model_path, default_data_pth=data_path, resume=True, train=False)
+        model, train_d, val_d, scalers = get_model(model=TiAlloyNet(connect_mode='sep'), model_path=model_path, data_path=data_path, resume=True, train=False)
     model.eval()
 
     # 检查scalers数量
@@ -268,7 +181,7 @@ def get_ground_truth_func_with_proc(model_path = 'models/surrogate/model_multi.p
     proc_scalar_scaler = scalers[2]
     phase_scalar_scaler = scalers[3]
     prop_scaler = scalers[4]
-    elem_ft = d[-1]
+    elem_ft = train_d[6]
     
     # 检查comp_scaler期望的特征数
     if hasattr(comp_scaler, 'n_features_in_'):
@@ -315,16 +228,20 @@ def get_ground_truth_func_with_proc(model_path = 'models/surrogate/model_multi.p
         _proc_bool = proc_bool_scaler.transform(_proc_bool)
         _proc_scalar = proc_scalar_scaler.transform(_proc_scalar)
         _phase_scalar = phase_scalar_scaler.transform(_phase_scalar)
+        
+        _proc_bool_mask = np.ones_like(_proc_bool, dtype=np.float32)
+        _proc_scalar_mask = np.ones_like(_proc_scalar, dtype=np.float32)
 
-        # 使用实际的成分维度（经过scaler处理后的维度）
         comp_dim = _comp.shape[1]
         _comp = torch.tensor(_comp, dtype=torch.float32).reshape(1, 1, comp_dim, 1).to(device)
         elem_t = torch.tensor(elem_ft, dtype=torch.float32).reshape(1, 1, *(elem_ft.shape)).to(device)
         _proc_bool = torch.tensor(_proc_bool, dtype=torch.float32).reshape(1, 1, N_PROC_BOOL, 1).to(device)
         _proc_scalar = torch.tensor(_proc_scalar, dtype=torch.float32).reshape(1, 1, N_PROC_SCALAR, 1).to(device)
         _phase_scalar = torch.tensor(_phase_scalar, dtype=torch.float32).reshape(1, 1, N_PHASE_SCALAR, 1).to(device)
+        _proc_bool_mask = torch.tensor(_proc_bool_mask, dtype=torch.float32).reshape(1, 1, N_PROC_BOOL, 1).to(device)
+        _proc_scalar_mask = torch.tensor(_proc_scalar_mask, dtype=torch.float32).reshape(1, 1, N_PROC_SCALAR, 1).to(device)
 
-        _prop = model(_comp, elem_t, _proc_bool, _proc_scalar, _phase_scalar).detach().cpu().numpy()
+        _prop = model(_comp, elem_t, _proc_bool, _proc_scalar, _phase_scalar, _proc_bool_mask, _proc_scalar_mask).detach().cpu().numpy()
         _prop = prop_scaler.inverse_transform(_prop)
 
         return _prop[0]
@@ -381,7 +298,7 @@ def get_mo_ground_truth_func():
         Build a linearly compounded multi-objective (MO) 'property' predicting function.
         支持完整工艺参数输入
     '''
-    _func = get_ground_truth_func_with_proc('models/surrogate/model_multi.pth', 'models/surrogate/data_multi.pth')
+    _func = get_ground_truth_func_with_proc(model_path = 'models/surrogate/model_TiAlloyNet_sep.pth', data_path = 'models/surrogate/data.pth')
 
     ''' local optimal maximums for YS, UTS, and ELongation '''
     _mo_scale = np.array([

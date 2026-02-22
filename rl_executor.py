@@ -7,7 +7,7 @@ import joblib
 import numpy as np
 
 from buffer import ReplayBuffer
-from environment import (
+from rl_env import (
     COMPOSITION_ROUNDUP_DIGITS, Environment, ALL_ACTIONS_COUNT, MAX_EPISODE_LEN, 
     COMP_MULTIPLIER, COMP_EPISODE_LEN, ALL_ACTIONS, calculate_phase_scalar
 )
@@ -126,7 +126,7 @@ def rl_dqn_two_stage(init_N = 20,
         torch.cuda.manual_seed(seed)
         torch.cuda.manual_seed_all(seed)
     
-    env = Environment(init_N = init_N, enable_ei = False, random_seed = seed)
+    env = Environment(init_N = init_N, random_seed = seed)
     env.surrogate_buffer.clear()
     env.surrogate_buffer_list.clear()
     
@@ -291,7 +291,7 @@ def rl_dqn_serial(init_N = 20,
         torch.cuda.manual_seed(seed)
         torch.cuda.manual_seed_all(seed)
 
-    env = Environment(init_N = init_N, enable_ei = False, random_seed = seed)
+    env = Environment(init_N = init_N, random_seed = seed)
     env.surrogate_buffer.clear()
     env.surrogate_buffer_list.clear()
 

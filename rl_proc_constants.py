@@ -66,8 +66,10 @@ HT2_TIME_MAX = 72.0
 HT2_TIME_COUNT = len(HT2_TIME_CANDIDATES)
 
 # 冷却方式
-COOLING_METHODS = ['Quench', 'Air', 'Furnace']
-COOLING_METHOD_COUNT = len(COOLING_METHODS)
+COOLING_METHODS_1 = ['Quench', 'Air', 'Furnace']
+COOLING_METHOD_COUNT_1 = len(COOLING_METHODS_1)
+COOLING_METHODS_2 = ['Quench', 'Air']
+COOLING_METHOD_COUNT_2 = len(COOLING_METHODS_2)
 
 # ==================== 动作空间定义 ====================
 
@@ -80,11 +82,11 @@ PROC_ACTIONS = {
     'ht1_decision': 2,           # HT1决策
     'ht1_temp': HT1_TEMP_COUNT,   # HT1_Temp
     'ht1_time': HT1_TIME_COUNT,   # HT1_Time
-    'ht1_cooling': COOLING_METHOD_COUNT,  # HT1冷却方式
+    'ht1_cooling': COOLING_METHOD_COUNT_1,  # HT1冷却方式
     'ht2_decision': 2,            # HT2决策
     'ht2_temp': HT2_TEMP_COUNT,   # HT2_Temp
     'ht2_time': HT2_TIME_COUNT,   # HT2_Time
-    'ht2_cooling': COOLING_METHOD_COUNT,  # HT2冷却方式
+    'ht2_cooling': COOLING_METHOD_COUNT_2,  # HT2冷却方式
 }
 
 # 最大动作空间（用于Q网络）
@@ -119,7 +121,7 @@ def get_proc_action_size(episode_count):
     """
     if episode_count < 18:
         # 成分阶段：使用原有的动作空间
-        from environment import ALL_ACTIONS_COUNT
+        from rl_env import ALL_ACTIONS_COUNT
         return ALL_ACTIONS_COUNT
     elif episode_count == 18:
         return PROC_ACTIONS['init_state']

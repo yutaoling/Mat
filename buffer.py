@@ -3,7 +3,7 @@ import random
 import torch
 from collections import deque, namedtuple
 
-from environment import Environment, device
+from rl_env import Environment, device
 
 class ReplayBuffer:
     """Fixed-size buffer to store experience tuples."""
