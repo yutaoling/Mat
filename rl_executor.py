@@ -323,12 +323,13 @@ def rl_dqn_serial(init_N = 20,
             if current_best <= recent_best * 1.001:
                 no_improvement_count += 1
                 if no_improvement_count > 30:
-                    old_epsilon = agent.epsilon
-                    agent.epsilon = min(0.7, agent.epsilon * 1.3)
-                    no_improvement_count = 0
-                    if abs(old_epsilon - agent.epsilon) > 0.01:
+                    new_epsilon = min(0.7, agent.epsilon * 1.3)
+                    if new_epsilon > agent.epsilon + 0.01:
+                        old_epsilon = agent.epsilon
+                        agent.epsilon = new_epsilon
                         print(f"  [STAGNATION] Episode {ep}: 性能停滞{no_improvement_count}次，"
-                              f"增加epsilon: {old_epsilon:.3f} -> {agent.epsilon:.3f}")
+                              f"增加epsilon: {agent.epsilon:.3f} -> {new_epsilon:.3f}")
+                        no_improvement_count
             else:
                 no_improvement_count = 0
         
@@ -413,5 +414,5 @@ if __name__ == '__main__':
     else:
         joblib.Parallel(n_jobs = N_JOBS)(
             joblib.delayed(rl_dqn_serial)(
-                train_ep_n = 300, seed = sd
+                train_ep_n = 10000, seed = sd
             ) for sd in seeds)

@@ -114,7 +114,7 @@ def get_proc_action_size(episode_count):
     根据episode_count返回当前步骤的动作空间大小
     
     Args:
-        episode_count: 当前步骤计数 (0-29)
+        episode_count: 当前步骤计数 (0-28)
     
     Returns:
         动作空间大小
@@ -126,26 +126,24 @@ def get_proc_action_size(episode_count):
     elif episode_count == 18:
         return PROC_ACTIONS['init_state']
     elif episode_count == 19:
-        return PROC_ACTIONS['deform_decision']
-    elif episode_count == 20:
         return PROC_ACTIONS['def_temp']
-    elif episode_count == 21:
+    elif episode_count == 20:
         return PROC_ACTIONS['def_strain']
-    elif episode_count == 22:
+    elif episode_count == 21:
         return PROC_ACTIONS['ht1_decision']
-    elif episode_count == 23:
+    elif episode_count == 22:
         return PROC_ACTIONS['ht1_temp']
-    elif episode_count == 24:
+    elif episode_count == 23:
         return PROC_ACTIONS['ht1_time']
-    elif episode_count == 25:
+    elif episode_count == 24:
         return PROC_ACTIONS['ht1_cooling']
-    elif episode_count == 26:
+    elif episode_count == 25:
         return PROC_ACTIONS['ht2_decision']
-    elif episode_count == 27:
+    elif episode_count == 26:
         return PROC_ACTIONS['ht2_temp']
-    elif episode_count == 28:
+    elif episode_count == 27:
         return PROC_ACTIONS['ht2_time']
-    elif episode_count == 29:
+    elif episode_count == 28:
         return PROC_ACTIONS['ht2_cooling']
     else:
         return 0  # Episode结束

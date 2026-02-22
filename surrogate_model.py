@@ -220,8 +220,8 @@ class ELM(nn.Module):
 
     def forward(self, comp, elem_feat, proc_bool, proc_scalar, phase_scalar, proc_bool_mask, proc_scalar_mask, scalers = None):
         batch_size = comp.size(0)
-        proc_bool_mean = torch.tensor(scalers[1].mean_ if scalers else np.zeros(N_PROC_BOOL), dtype=torch.float32, device=comp.device)
-        proc_scalar_mean = torch.tensor(scalers[2].mean_ if scalers else np.zeros(N_PROC_SCALAR), dtype=torch.float32, device=comp.device)
+        proc_bool_mean = torch.tensor(scalers[1].mean_ if scalers else np.zeros(N_PROC_BOOL), dtype=torch.float32, device=device)
+        proc_scalar_mean = torch.tensor(scalers[2].mean_ if scalers else np.zeros(N_PROC_SCALAR), dtype=torch.float32, device=device)
         proc_bool = proc_bool.reshape(batch_size, -1)
         proc_scalar = proc_scalar.reshape(batch_size, -1)
         
@@ -280,8 +280,8 @@ class ELM_Mean(nn.Module):
 
     def forward(self, comp, elem_feat, proc_bool, proc_scalar, phase_scalar, proc_bool_mask, proc_scalar_mask, scalers = None):
         batch_size = comp.size(0)
-        proc_bool_mean = torch.tensor(scalers[1].mean_ if scalers else np.zeros(N_PROC_BOOL), dtype=torch.float32, device=comp.device)
-        proc_scalar_mean = torch.tensor(scalers[2].mean_ if scalers else np.zeros(N_PROC_SCALAR), dtype=torch.float32, device=comp.device)
+        proc_bool_mean = torch.tensor(scalers[1].mean_ if scalers else np.zeros(N_PROC_BOOL), dtype=torch.float32, device=device)
+        proc_scalar_mean = torch.tensor(scalers[2].mean_ if scalers else np.zeros(N_PROC_SCALAR), dtype=torch.float32, device=device)
         proc_bool = proc_bool.reshape(batch_size, -1)
         proc_scalar = proc_scalar.reshape(batch_size, -1)
         
@@ -343,8 +343,8 @@ class ELM_CNN(nn.Module):
 
     def forward(self, comp, elem_feat, proc_bool, proc_scalar, phase_scalar, proc_bool_mask, proc_scalar_mask, scalers = None):
         batch_size = comp.size(0)
-        proc_bool_mean = torch.tensor(scalers[1].mean_ if scalers else np.zeros(N_PROC_BOOL), dtype=torch.float32, device=comp.device)
-        proc_scalar_mean = torch.tensor(scalers[2].mean_ if scalers else np.zeros(N_PROC_SCALAR), dtype=torch.float32, device=comp.device)
+        proc_bool_mean = torch.tensor(scalers[1].mean_ if scalers else np.zeros(N_PROC_BOOL), dtype=torch.float32, device=device)
+        proc_scalar_mean = torch.tensor(scalers[2].mean_ if scalers else np.zeros(N_PROC_SCALAR), dtype=torch.float32, device=device)
         proc_bool = proc_bool.reshape(batch_size, -1)
         proc_scalar = proc_scalar.reshape(batch_size, -1)
         
@@ -499,8 +499,8 @@ class DNN(nn.Module):
 
     def forward(self, comp, elem_feat, proc_bool, proc_scalar, phase_scalar, proc_bool_mask, proc_scalar_mask, scalers = None):
         batch_size = comp.size(0)
-        proc_bool_mean = torch.tensor(scalers[1].mean_ if scalers else np.zeros(N_PROC_BOOL), dtype=torch.float32, device=comp.device)
-        proc_scalar_mean = torch.tensor(scalers[2].mean_ if scalers else np.zeros(N_PROC_SCALAR), dtype=torch.float32, device=comp.device)
+        proc_bool_mean = torch.tensor(scalers[1].mean_ if scalers else np.zeros(N_PROC_BOOL), dtype=torch.float32, device=device)
+        proc_scalar_mean = torch.tensor(scalers[2].mean_ if scalers else np.zeros(N_PROC_SCALAR), dtype=torch.float32, device=device)
         proc_bool = proc_bool.reshape(batch_size, -1)
         proc_scalar = proc_scalar.reshape(batch_size, -1)
         
@@ -675,11 +675,11 @@ class Attention(nn.Module):
         phase_scalar = phase_scalar.reshape(batch_size, -1)
         proc_bool_mean = torch.tensor(
             scalers[1].mean_ if scalers else np.zeros(N_PROC_BOOL),
-            dtype=torch.float32, device=comp.device
+            dtype=torch.float32, device=device
         )
         proc_scalar_mean = torch.tensor(
             scalers[2].mean_ if scalers else np.zeros(N_PROC_SCALAR),
-            dtype=torch.float32, device=comp.device
+            dtype=torch.float32, device=device
         )
         if self.mask_mode == 'learned':
             proc_bool_mask_r = proc_bool_mask.reshape(batch_size, -1) if proc_bool_mask is not None else None
@@ -808,8 +808,8 @@ class TiAlloyNet(nn.Module):
 
     def forward(self, comp, elem_feat, proc_bool, proc_scalar, phase_scalar, proc_bool_mask, proc_scalar_mask, scalers = None):
         batch_size = comp.size(0)
-        proc_bool_mean = torch.tensor(scalers[1].mean_ if scalers else np.zeros(N_PROC_BOOL), dtype=torch.float32, device=comp.device)
-        proc_scalar_mean = torch.tensor(scalers[2].mean_ if scalers else np.zeros(N_PROC_SCALAR), dtype=torch.float32, device=comp.device)
+        proc_bool_mean = torch.tensor(scalers[1].mean_ if scalers else np.zeros(N_PROC_BOOL), dtype=torch.float32, device=device)
+        proc_scalar_mean = torch.tensor(scalers[2].mean_ if scalers else np.zeros(N_PROC_SCALAR), dtype=torch.float32, device=device)
         proc_bool = proc_bool.reshape(batch_size, -1)
         proc_scalar = proc_scalar.reshape(batch_size, -1)
         

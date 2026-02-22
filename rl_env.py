@@ -122,7 +122,7 @@ COMP_MULTIPLIER = 100.          # sum=1 -> sum=100.
 
 ELEM_N = len(COMP_LIMITS)
 COMP_EPISODE_LEN = ELEM_N - 1  # 成分阶段长度
-MAX_EPISODE_LEN = 30  # 最大episode长度（成分18 + 工艺12）
+MAX_EPISODE_LEN = 29  # 最大episode长度（成分18 + 工艺11）
 
 EPSILON_START = 0.9
 EPSILON_DECAY_COEF = 10000
@@ -170,6 +170,7 @@ def get_ground_truth_func_with_proc(model_path = 'models/surrogate/model_TiAlloy
         from sklearn.base import InconsistentVersionWarning
         warnings.filterwarnings('ignore', category=InconsistentVersionWarning)
         model, train_d, val_d, scalers = get_model(model=TiAlloyNet(connect_mode='sep'), model_path=model_path, data_path=data_path, resume=True, train=False)
+    model.to(device)
     model.eval()
 
     # 检查scalers数量
@@ -335,8 +336,7 @@ class State:
             self.__proc_scalar = np.zeros(N_PROC_SCALAR, dtype=np.float32)  # 6维
             
             # 工艺状态标志
-            self.__is_wrought = 0  # 0或1
-            self.__deform_decision = 0  # 0=不变形, 1=变形
+            self.__is_wrought = 0  # 0=不变形, 1=变形
             self.__ht1_decision = 0  # 0=不进行, 1=进行
             self.__ht2_decision = 0  # 0=不进行, 1=进行
         else:
@@ -349,7 +349,6 @@ class State:
             self.__proc_bool = deepcopy(previous_state.get_proc_bool())
             self.__proc_scalar = deepcopy(previous_state.get_proc_scalar())
             self.__is_wrought = previous_state.get_is_wrought()
-            self.__deform_decision = previous_state.get_deform_decision()
             self.__ht1_decision = previous_state.get_ht1_decision()
             self.__ht2_decision = previous_state.get_ht2_decision()
             
@@ -391,9 +390,6 @@ class State:
     def get_is_wrought(self):
         return self.__is_wrought
     
-    def get_deform_decision(self):
-        return self.__deform_decision
-    
     def get_ht1_decision(self):
         return self.__ht1_decision
     
@@ -408,61 +404,64 @@ class State:
             if action_idx == 0:
                 self.__proc_bool[0] = 1.0  # Is_Not_Wrought
                 self.__proc_bool[1] = 0.0  # Is_Wrought
+                self.__proc_scalar[0] = 0.0  # Def_Temp
+                self.__proc_scalar[1] = 0.0  # Def_Strain
                 self.__is_wrought = 0
             else:
                 self.__proc_bool[0] = 0.0
                 self.__proc_bool[1] = 1.0
                 self.__is_wrought = 1
         
-        elif ep == 19:  # 变形决策
+        elif ep == 19:  # Def_Temp
             if self.__is_wrought == 1:
-                self.__deform_decision = action_idx
-                if action_idx == 0:  # 不变形
-                    self.__proc_scalar[0] = 0.0  # Def_Temp
-                    self.__proc_scalar[1] = 0.0  # Def_Strain
-        
-        elif ep == 20:  # Def_Temp
-            if self.__is_wrought == 1 and self.__deform_decision == 1:
                 # 确保action_idx在有效范围内
                 if action_idx < len(DEF_TEMP_CANDIDATES):
                     self.__proc_scalar[0] = DEF_TEMP_CANDIDATES[action_idx]
                 else:
                     # 如果超出范围，使用最后一个候选值
                     self.__proc_scalar[0] = DEF_TEMP_CANDIDATES[-1]
+            else:
+                self.__proc_scalar[0] = 0.0  # 如果不变形，确保Def_Temp为0
         
-        elif ep == 21:  # Def_Strain
-            if self.__is_wrought == 1 and self.__deform_decision == 1:
+        elif ep == 20:  # Def_Strain
+            if self.__is_wrought == 1:
                 # 确保action_idx在有效范围内
                 if action_idx < len(DEF_STRAIN_CANDIDATES):
                     self.__proc_scalar[1] = DEF_STRAIN_CANDIDATES[action_idx]
                 else:
                     # 如果超出范围，使用最后一个候选值
                     self.__proc_scalar[1] = DEF_STRAIN_CANDIDATES[-1]
+            else:
+                self.__proc_scalar[1] = 0.0  # 如果不变形，确保Def_Strain为0
         
-        elif ep == 22:  # HT1决策
+        elif ep == 21:  # HT1决策
             self.__ht1_decision = action_idx
             if action_idx == 0:  # 不进行HT1
                 self.__proc_scalar[2] = 0.0  # HT1_Temp
                 self.__proc_scalar[3] = 0.0  # HT1_Time
                 self.__proc_bool[2:5] = 0.0  # HT1冷却方式
         
-        elif ep == 23:  # HT1_Temp
+        elif ep == 22:  # HT1_Temp
             if self.__ht1_decision == 1:
                 # 确保action_idx在有效范围内
                 if action_idx < len(HT1_TEMP_CANDIDATES):
                     self.__proc_scalar[2] = HT1_TEMP_CANDIDATES[action_idx]
                 else:
                     self.__proc_scalar[2] = HT1_TEMP_CANDIDATES[-1]
+            else:
+                self.__proc_scalar[2] = 0.0  # 如果HT1不进行，确保参数为0
         
-        elif ep == 24:  # HT1_Time
+        elif ep == 23:  # HT1_Time
             if self.__ht1_decision == 1:
                 # 确保action_idx在有效范围内
                 if action_idx < len(HT1_TIME_CANDIDATES):
                     self.__proc_scalar[3] = HT1_TIME_CANDIDATES[action_idx]
                 else:
                     self.__proc_scalar[3] = HT1_TIME_CANDIDATES[-1]
+            else:
+                self.__proc_scalar[3] = 0.0  # 如果HT1不进行，确保参数为0
         
-        elif ep == 25:  # HT1_冷却方式
+        elif ep == 24:  # HT1_冷却方式
             if self.__ht1_decision == 1:
                 self.__proc_bool[2:5] = 0.0
                 # 确保action_idx在有效范围内（0-2对应3种冷却方式）
@@ -470,32 +469,40 @@ class State:
                     self.__proc_bool[2 + action_idx] = 1.0
                 else:
                     self.__proc_bool[2] = 1.0  # 默认使用第一种冷却方式
+            else:
+                self.__proc_bool[2:5] = 0.0  # 如果HT1不进行，确保冷却方式为0
         
-        elif ep == 26:  # HT2决策
+        elif ep == 25:  # HT2决策
             if self.__ht1_decision == 1:  # 只有HT1完成后才能进行HT2
                 self.__ht2_decision = action_idx
-                if action_idx == 0:  # 不进行HT2
-                    self.__proc_scalar[4] = 0.0  # HT2_Temp
-                    self.__proc_scalar[5] = 0.0  # HT2_Time
-                    self.__proc_bool[5:8] = 0.0  # HT2冷却方式
+            else:
+                self.__ht2_decision = 0  # 强制不进行HT2
+            if action_idx == 0:  # 不进行HT2
+                self.__proc_scalar[4] = 0.0  # HT2_Temp
+                self.__proc_scalar[5] = 0.0  # HT2_Time
+                self.__proc_bool[5:8] = 0.0  # HT2冷却方式
         
-        elif ep == 27:  # HT2_Temp
+        elif ep == 26:  # HT2_Temp
             if self.__ht1_decision == 1 and self.__ht2_decision == 1:
                 # 确保action_idx在有效范围内
                 if action_idx < len(HT2_TEMP_CANDIDATES):
                     self.__proc_scalar[4] = HT2_TEMP_CANDIDATES[action_idx]
                 else:
                     self.__proc_scalar[4] = HT2_TEMP_CANDIDATES[-1]
+            else:
+                self.__proc_scalar[4] = 0.0  # 如果HT2不进行，确保参数为0
         
-        elif ep == 28:  # HT2_Time
+        elif ep == 27:  # HT2_Time
             if self.__ht1_decision == 1 and self.__ht2_decision == 1:
                 # 确保action_idx在有效范围内
                 if action_idx < len(HT2_TIME_CANDIDATES):
                     self.__proc_scalar[5] = HT2_TIME_CANDIDATES[action_idx]
                 else:
                     self.__proc_scalar[5] = HT2_TIME_CANDIDATES[-1]
+            else:
+                self.__proc_scalar[5] = 0.0  # 如果HT2不进行，确保参数为0
         
-        elif ep == 29:  # HT2_冷却方式
+        elif ep == 28:  # HT2_冷却方式
             if self.__ht1_decision == 1 and self.__ht2_decision == 1:
                 self.__proc_bool[5:8] = 0.0
                 # 确保action_idx在有效范围内（0-2对应3种冷却方式）
@@ -503,6 +510,8 @@ class State:
                     self.__proc_bool[5 + action_idx] = 1.0
                 else:
                     self.__proc_bool[5] = 1.0  # 默认使用第一种冷却方式
+            else:
+                self.__proc_bool[5:8] = 0.0  # 如果HT2不进行，确保冷却方式为0
 
     def repr(self):
         """
@@ -591,40 +600,33 @@ class State:
         if ep == 18:
             return False
         
-        # 步骤19：变形决策
-        if ep == 19:
-            if self.__is_wrought == 1:
-                return False  # 需要决定是否变形
-            else:
-                return False  # Is_Wrought=0，跳过变形，继续HT1决策
-        
         # 步骤20-21：变形参数（仅当Is_Wrought=1且选择变形时）
         if self.__is_wrought == 1:
-            if ep == 20:  # Def_Temp
+            if ep == 19:  # Def_Temp
                 return False
-            if ep == 21:  # Def_Strain
+            if ep == 20:  # Def_Strain
                 return False  # 变形完成，继续HT1
         
-        # 步骤22：HT1决策
-        if ep == 22:
+        # 步骤21：HT1决策
+        if ep == 21:
             return False
         
-        # 步骤23-25：HT1参数（仅当选择进行HT1时）
+        # 步骤22-24：HT1参数（仅当选择进行HT1时）
         if self.__ht1_decision == 1:
-            if ep == 23:  # HT1_Temp
+            if ep == 22:  # HT1_Temp
                 return False
-            if ep == 24:  # HT1_Time
+            if ep == 23:  # HT1_Time
                 return False
-            if ep == 25:  # HT1_冷却方式
+            if ep == 24:  # HT1_冷却方式
                 return False  # HT1完成，继续HT2
         
-        # 如果选择不进行HT1，episode在22步结束（但需要先完成HT1决策）
-        # 注意：这里ep==22时，ht1_decision已经设置，但还需要检查
-        if ep == 22 and self.__ht1_decision == 0:
+        # 如果选择不进行HT1，episode在21步结束（但需要先完成HT1决策）
+        # 注意：这里ep==21时，ht1_decision已经设置，但还需要检查
+        if ep == 21 and self.__ht1_decision == 0:
             return True
         
-        # 步骤26：HT2决策（仅当HT1完成时）
-        if ep == 26:
+        # 步骤25：HT2决策（仅当HT1完成时）
+        if ep == 25:
             if self.__ht1_decision == 1:
                 return False  # 需要决定是否进行HT2
             else:
@@ -632,15 +634,15 @@ class State:
         
         # 步骤27-29：HT2参数（仅当选择进行HT2时）
         if self.__ht1_decision == 1 and self.__ht2_decision == 1:
-            if ep == 27:  # HT2_Temp
+            if ep == 26:  # HT2_Temp
                 return False
-            if ep == 28:  # HT2_Time
+            if ep == 27:  # HT2_Time
                 return False
-            if ep == 29:  # HT2_冷却方式
+            if ep == 28:  # HT2_冷却方式
                 return True  # HT2完成，episode结束
         
-        # 如果选择不进行HT2，episode在26步结束
-        if self.__ht1_decision == 1 and self.__ht2_decision == 0 and ep == 26:
+        # 如果选择不进行HT2，episode在25步结束
+        if self.__ht1_decision == 1 and self.__ht2_decision == 0 and ep == 25:
             return True
         
         # 其他情况：未完成
@@ -707,12 +709,12 @@ class State:
             else:
                 mask[0] = True  # 只能选择不变形（实际上应该跳过）
         elif ep == 20:  # Def_Temp
-            if self.__is_wrought == 1 and self.__deform_decision == 1:
+            if self.__is_wrought == 1:
                 mask[0:len(DEF_TEMP_CANDIDATES)] = True
             else:
                 mask[0] = True  # 只能选择0
         elif ep == 21:  # Def_Strain
-            if self.__is_wrought == 1 and self.__deform_decision == 1:
+            if self.__is_wrought == 1:
                 mask[0:len(DEF_STRAIN_CANDIDATES)] = True
             else:
                 mask[0] = True
