@@ -19,7 +19,7 @@ from rl_proc_constants import (
     DEF_TEMP_CANDIDATES, DEF_TEMP_MAX, DEF_STRAIN_CANDIDATES, DEF_STRAIN_MAX,
     HT1_TEMP_CANDIDATES, HT1_TEMP_MAX, HT1_TIME_CANDIDATES, HT1_TIME_MAX,
     HT2_TEMP_CANDIDATES, HT2_TEMP_MAX, HT2_TIME_CANDIDATES, HT2_TIME_MAX,
-    COOLING_METHODS_1, COOLING_METHODS_2, MAX_PROC_ACTION_SPACE, EPISODE_COUNT_MAX, PHASE_NORMALIZATION
+    COOLING_METHOD_COUNT_1, COOLING_METHOD_COUNT_2, MAX_PROC_ACTION_SPACE, EPISODE_COUNT_MAX, PHASE_NORMALIZATION
 )
 
 ''' botorch GPR part, if needed '''
@@ -295,13 +295,8 @@ def calculate_phase_scalar(composition):
     return np.array([mo_eq, al_eq, beta_transform_T], dtype=np.float32)
 
 def get_mo_ground_truth_func():
-    '''
-        Build a linearly compounded multi-objective (MO) 'property' predicting function.
-        支持完整工艺参数输入
-    '''
     _func = get_ground_truth_func_with_proc(model_path = 'models/surrogate/model_TiAlloyNet_sep.pth', data_path = 'models/surrogate/data.pth')
 
-    ''' local optimal maximums for YS, UTS, and ELongation '''
     _mo_scale = np.array([
         70,
         813,
@@ -311,19 +306,15 @@ def get_mo_ground_truth_func():
     ])
 
     def _mo_raw_func(comp, proc_bool, proc_scalar, phase_scalar):
-        """
-            返回原始多目标向量（未加权）的预测值，形如 (n_props,)
-        """
         return np.array(_func(comp, proc_bool, proc_scalar, phase_scalar))
 
-    # 返回原始向量函数以及用于归一化的尺度向量
     return _mo_raw_func, _mo_scale
 
 class State:
     def __init__(self, if_init: bool = False, 
                  previous_state: State = None, 
                  action: ActionType = None, 
-                 action_idx: int = None,  # 新增：动作索引（用于工艺阶段）
+                 action_idx: int = None,
                  episode_len = COMP_EPISODE_LEN):
         if if_init:
             # 初始化成分
@@ -401,16 +392,15 @@ class State:
         ep = self.__episode_count
         
         if ep == 18:  # 初始状态选择
-            if action_idx == 0:
-                self.__proc_bool[0] = 1.0  # Is_Not_Wrought
-                self.__proc_bool[1] = 0.0  # Is_Wrought
+            self.__is_wrought = action_idx
+            if action_idx:
+                self.__proc_bool[0] = 0  # Is_Not_Wrought
+                self.__proc_bool[1] = 1  # Is_Wrought
+            else:
+                self.__proc_bool[0] = 1
+                self.__proc_bool[1] = 0
                 self.__proc_scalar[0] = 0.0  # Def_Temp
                 self.__proc_scalar[1] = 0.0  # Def_Strain
-                self.__is_wrought = 0
-            else:
-                self.__proc_bool[0] = 0.0
-                self.__proc_bool[1] = 1.0
-                self.__is_wrought = 1
         
         elif ep == 19:  # Def_Temp
             if self.__is_wrought == 1:
@@ -436,10 +426,16 @@ class State:
         
         elif ep == 21:  # HT1决策
             self.__ht1_decision = action_idx
+            self.__proc_bool[2] = action_idx
             if action_idx == 0:  # 不进行HT1
                 self.__proc_scalar[2] = 0.0  # HT1_Temp
                 self.__proc_scalar[3] = 0.0  # HT1_Time
-                self.__proc_bool[2:5] = 0.0  # HT1冷却方式
+                self.__proc_bool[3:6] = 0.0  # HT1冷却方式
+                self.__ht2_decision = 0  # 强制不进行HT2
+                self.__proc_bool[6] = 0
+                self.__proc_scalar[4] = 0.0  # HT2_Temp
+                self.__proc_scalar[5] = 0.0  # HT2_Time
+                self.__proc_bool[7:9] = 0.0  # HT2冷却方式
         
         elif ep == 22:  # HT1_Temp
             if self.__ht1_decision == 1:
@@ -463,24 +459,26 @@ class State:
         
         elif ep == 24:  # HT1_冷却方式
             if self.__ht1_decision == 1:
-                self.__proc_bool[2:5] = 0.0
+                self.__proc_bool[3:6] = 0.0
                 # 确保action_idx在有效范围内（0-2对应3种冷却方式）
-                if 0 <= action_idx <= 2:
-                    self.__proc_bool[2 + action_idx] = 1.0
+                if 0 <= action_idx <= COOLING_METHOD_COUNT_1 - 1 :
+                    self.__proc_bool[3 + action_idx] = 1.0
                 else:
-                    self.__proc_bool[2] = 1.0  # 默认使用第一种冷却方式
+                    self.__proc_bool[3] = 1.0  # 默认使用第一种冷却方式
             else:
-                self.__proc_bool[2:5] = 0.0  # 如果HT1不进行，确保冷却方式为0
+                self.__proc_bool[3:6] = 0.0  # 如果HT1不进行，确保冷却方式为0
         
         elif ep == 25:  # HT2决策
             if self.__ht1_decision == 1:  # 只有HT1完成后才能进行HT2
                 self.__ht2_decision = action_idx
+                self.__proc_bool[6] = action_idx
             else:
                 self.__ht2_decision = 0  # 强制不进行HT2
-            if action_idx == 0:  # 不进行HT2
+                self.__proc_bool[6] = 0
+            if self.__ht2_decision == 0:  # 不进行HT2
                 self.__proc_scalar[4] = 0.0  # HT2_Temp
                 self.__proc_scalar[5] = 0.0  # HT2_Time
-                self.__proc_bool[5:8] = 0.0  # HT2冷却方式
+                self.__proc_bool[7:9] = 0.0  # HT2冷却方式
         
         elif ep == 26:  # HT2_Temp
             if self.__ht1_decision == 1 and self.__ht2_decision == 1:
@@ -504,14 +502,14 @@ class State:
         
         elif ep == 28:  # HT2_冷却方式
             if self.__ht1_decision == 1 and self.__ht2_decision == 1:
-                self.__proc_bool[5:8] = 0.0
+                self.__proc_bool[7:9] = 0.0
                 # 确保action_idx在有效范围内（0-2对应3种冷却方式）
-                if 0 <= action_idx <= 2:
-                    self.__proc_bool[5 + action_idx] = 1.0
+                if 0 <= action_idx <= COOLING_METHOD_COUNT_2 -1 :
+                    self.__proc_bool[7 + action_idx] = 1.0
                 else:
-                    self.__proc_bool[5] = 1.0  # 默认使用第一种冷却方式
+                    self.__proc_bool[7] = 1.0  # 默认使用第一种冷却方式
             else:
-                self.__proc_bool[5:8] = 0.0  # 如果HT2不进行，确保冷却方式为0
+                self.__proc_bool[7:9] = 0.0  # 如果HT2不进行，确保冷却方式为0
 
     def repr(self):
         """
@@ -584,69 +582,16 @@ class State:
         ep = self.__episode_count
         
         # 安全检查：如果超过最大episode长度，强制结束
-        if ep >= self.__max_episode_len:
+        if ep >= self.__max_episode_len -1 :
             return True
         
         # 成分阶段：未完成
-        if ep < COMP_EPISODE_LEN - 1:
-            return False
-        
-        # 成分阶段最后一步：还需要进入工艺阶段
-        if ep == COMP_EPISODE_LEN - 1:
-            return False
-        
-        # 工艺阶段开始
-        # 步骤18：初始状态选择 - 未完成
-        if ep == 18:
-            return False
-        
-        # 步骤20-21：变形参数（仅当Is_Wrought=1且选择变形时）
-        if self.__is_wrought == 1:
-            if ep == 19:  # Def_Temp
-                return False
-            if ep == 20:  # Def_Strain
-                return False  # 变形完成，继续HT1
-        
-        # 步骤21：HT1决策
-        if ep == 21:
-            return False
-        
-        # 步骤22-24：HT1参数（仅当选择进行HT1时）
-        if self.__ht1_decision == 1:
-            if ep == 22:  # HT1_Temp
-                return False
-            if ep == 23:  # HT1_Time
-                return False
-            if ep == 24:  # HT1_冷却方式
-                return False  # HT1完成，继续HT2
-        
-        # 如果选择不进行HT1，episode在21步结束（但需要先完成HT1决策）
-        # 注意：这里ep==21时，ht1_decision已经设置，但还需要检查
-        if ep == 21 and self.__ht1_decision == 0:
+        if ep >= 21 and self.__ht1_decision == 0:
             return True
-        
-        # 步骤25：HT2决策（仅当HT1完成时）
-        if ep == 25:
-            if self.__ht1_decision == 1:
-                return False  # 需要决定是否进行HT2
-            else:
-                return True  # 没有HT1，episode结束
-        
-        # 步骤27-29：HT2参数（仅当选择进行HT2时）
-        if self.__ht1_decision == 1 and self.__ht2_decision == 1:
-            if ep == 26:  # HT2_Temp
-                return False
-            if ep == 27:  # HT2_Time
-                return False
-            if ep == 28:  # HT2_冷却方式
-                return True  # HT2完成，episode结束
-        
-        # 如果选择不进行HT2，episode在25步结束
-        if self.__ht1_decision == 1 and self.__ht2_decision == 0 and ep == 25:
+        elif ep >= 25 and self.__ht2_decision == 0:
             return True
-        
-        # 其他情况：未完成
-        return False
+        else:
+            return True
 
     def get_action_idx_limits(self):
         '''
