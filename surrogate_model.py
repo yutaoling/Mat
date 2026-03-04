@@ -759,9 +759,9 @@ class Attention(nn.Module):
         return name
 
 
-class TiAlloyNet(nn.Module):
+class Fusion(nn.Module):
     def __init__(self, connect_mode = 'jump'):
-        super(TiAlloyNet, self).__init__()
+        super(Fusion, self).__init__()
         self.connect_mode = connect_mode
         
         if self.connect_mode == 'jump':
@@ -808,13 +808,11 @@ class TiAlloyNet(nn.Module):
 
     def forward(self, comp, elem_feat, proc_bool, proc_scalar, phase_scalar, proc_bool_mask, proc_scalar_mask, scalers = None):
         batch_size = comp.size(0)
-        proc_bool_mean = torch.tensor(scalers[1].mean_ if scalers else np.zeros(N_PROC_BOOL), dtype=torch.float32, device=device)
-        proc_scalar_mean = torch.tensor(scalers[2].mean_ if scalers else np.zeros(N_PROC_SCALAR), dtype=torch.float32, device=device)
         proc_bool = proc_bool.reshape(batch_size, -1)
         proc_scalar = proc_scalar.reshape(batch_size, -1)
         
-        proc_bool_mask_r = proc_bool_mask.reshape(batch_size, -1) if proc_bool_mask is not None else None
-        proc_scalar_mask_r = proc_scalar_mask.reshape(batch_size, -1) if proc_scalar_mask is not None else None
+        proc_bool_mask_r = proc_bool_mask.reshape(batch_size, -1)
+        proc_scalar_mask_r = proc_scalar_mask.reshape(batch_size, -1)
         proc_bool, proc_scalar = self.learned_mask(proc_bool, proc_scalar, proc_bool_mask_r, proc_scalar_mask_r)
 
         mef = torch.sum(comp.squeeze(-1).squeeze(1).unsqueeze(-1) * elem_feat.squeeze(1), dim=1)
@@ -880,7 +878,49 @@ class TiAlloyNet(nn.Module):
         return out
 
     def get_name(self):
-        return f"TiAlloyNet_{self.connect_mode}"
+        return f"Fusion_{self.connect_mode}"
+
+class Share_test(nn.Module):
+    def __init__(self, target = [1, 1, 1, 1, 1]):
+        super(Share_test, self).__init__()
+        self.target = target
+        self.fc = nn.Linear(N_ELEM + N_ELEM_FEAT + N_PROC_BOOL + N_PROC_SCALAR + N_PHASE_SCALAR, N_FC_NERON)
+        self.out = nn.Linear(N_FC_NERON, sum(self.target))
+        self.af = nn.LeakyReLU(LEAKY_RATE)
+        self.learned_mask = LearnedMaskedProc()
+        self.reset_parameters()
+        self.lr = LEARNING_RATE
+        self.optimizer = optim.Adam(self.parameters(), lr=self.lr, weight_decay=1e-4)
+    
+    def reset_parameters(self):
+        self.fc.weight.data.uniform_(*hidden_init(self.fc))
+        self.out.weight.data.uniform_(*hidden_init(self.out))
+    def forward(self, comp, elem_feat, proc_bool, proc_scalar, phase_scalar, proc_bool_mask, proc_scalar_mask, scalers = None):
+        batch_size = comp.size(0)
+        proc_bool = proc_bool.reshape(batch_size, -1)
+        proc_scalar = proc_scalar.reshape(batch_size, -1)
+        phase_scalar = phase_scalar.reshape(batch_size, -1)
+        proc_bool_mask_r = proc_bool_mask.reshape(batch_size, -1)
+        proc_scalar_mask_r = proc_scalar_mask.reshape(batch_size, -1)
+        proc_bool, proc_scalar = self.learned_mask(proc_bool, proc_scalar, proc_bool_mask_r, proc_scalar_mask_r)
+        
+        mef = torch.sum(comp.squeeze(-1).squeeze(1).unsqueeze(-1) * elem_feat.squeeze(1), dim=1)
+        x = torch.cat([comp.reshape(-1, N_ELEM), 
+            mef,
+            proc_bool.reshape(-1, N_PROC_BOOL),
+            proc_scalar.reshape(-1, N_PROC_SCALAR),
+            phase_scalar.reshape(-1, N_PHASE_SCALAR)], dim=-1)
+        x = self.af(self.fc(x))
+        x = self.out(x)
+        out = torch.zeros(batch_size, N_PROP, device=device)
+        for i, t in enumerate(self.target):
+            if t == 1:
+                out[:, i:i+1] = x[:, :1]
+                x = x[:, 1:]
+        return out
+
+    def get_name(self):
+        return f"Share_test_{''.join(str(t) for t in self.target)}"
 
 def MODEL_LIST(mask_mode: str) -> list:
     model_list = []
@@ -915,11 +955,22 @@ if __name__ == '__main__':
     mask_modes = ['zero', 'learned', 'mean_dropout', 'sample_dropout']
     for mask_mode in mask_modes:
         model_list = MODEL_LIST(mask_mode)
-        for model in model_list:
-            print(f"{model.get_name()} {list(model(*test_input).size())}")
+        # for model in model_list:
+            # print(f"{model.get_name()} {list(model(*test_input).size())}")
     connect_modes = ['jump', 'emb', 'sep', 'sep_all']
     for connect_mode in connect_modes:
-        model = TiAlloyNet(connect_mode).to(device)
-        print(f"{model.get_name()} {list(model(*test_input).size())}")
+        model = Fusion(connect_mode).to(device)
+        # print(f"{model.get_name()} {list(model(*test_input).size())}")
+    
+    for _ym in [0, 1]:
+        for _ys in [0, 1]:
+            for _uts in [0, 1]:
+                for _el in [0, 1]:
+                    for _hv in [0, 1]:
+                        if _ym == 0 and _ys == 0 and _uts == 0 and _el == 0 and _hv == 0:
+                            continue
+                        target = [_ym, _ys, _uts, _el, _hv]
+                        model = Share_test(target).to(device)
+                        print(f"{model.get_name()} {list(model(*test_input).size())}")
 
     

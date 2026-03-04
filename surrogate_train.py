@@ -192,9 +192,13 @@ class CustomDataset(Dataset):
 
         return _id, _comp, _proc_bool, _proc_scalar, _phase_scalar, _prop, _proc_bool_mask, _proc_scalar_mask, _prop_mask
 
-def get_dataloader(data_tuple, batch_size = 16, augment = False) -> DataLoader:
+def get_dataloader(data_tuple, batch_size = 16, augment = False, target = None) -> DataLoader:
     id_data, comp_data, proc_bool_data, proc_scalar_data, phase_scalar_data, prop_data, \
         elem_feature, proc_bool_mask, proc_scalar_mask, prop_mask = data_tuple
+    if target is not None:
+        for i, t in enumerate(target):
+            if t == 0:
+                prop_mask[:, i] = False
     dataset = CustomDataset(data_tuple, None, augment=augment)
 
     _elem_feature_base = torch.tensor(elem_feature, dtype=torch.float32, device=device).reshape(1, 1, *elem_feature.shape)
@@ -387,8 +391,10 @@ def train_a_model(model = None,
                     num_training_epochs = 1000,
                     batch_size = 16,
                     save_path = None,):
-    train_dl = get_dataloader(train_d, batch_size)
-    val_dl = get_dataloader(val_d, batch_size, augment=False)
+    train_dl = get_dataloader(train_d, batch_size, augment=True, \
+        target=model.target if hasattr(model, 'target') else None)
+    val_dl = get_dataloader(val_d, batch_size, augment=False, \
+        target=model.target if hasattr(model, 'target') else None)
     epoch_log_buffer = []
     early_stopper = EarlyStopping(patience=100,min_delta=1e-4,verbose=True)
     prop_scaler = scalers[4]
@@ -481,9 +487,9 @@ def get_model(model = None,
     return model, train_d, val_d, scalers
 
 if __name__ == '__main__':
-    '''
     mask_modes = ['zero', 'learned', 'mean_dropout', 'sample_dropout']
     for mask_mode in mask_modes:
+        break
         for model in MODEL_LIST(mask_mode = mask_mode):
             model_name = model.get_name()
             print(f"\nTraining model: {model_name}\n")
@@ -497,10 +503,11 @@ if __name__ == '__main__':
                 f'{model_dir}/data.pth',
                 resume=False,
                 train=True,
-                save_path=f'{log_dir}/train_{model_name}.txt')'''
+                save_path=f'{log_dir}/train_{model_name}.txt')
     
-    for connect_mode in ['sep_all']:
-        model = TiAlloyNet(connect_mode=connect_mode).to(device)
+    for connect_mode in ['jump', 'emb', 'sep', 'sep_all']:
+        break
+        model = Fusion(connect_mode=connect_mode).to(device)
         model_name = model.get_name()
         print(f"\nTraining model: {model_name}\n")
         model_dir = f'models/surrogate'
@@ -514,3 +521,26 @@ if __name__ == '__main__':
             resume=False,
             train=True,
             save_path=f'{log_dir}/train_{model_name}.txt')
+    
+    for _ym in [0, 1]:
+        for _ys in [0, 1]:
+            for _uts in [0, 1]:
+                for _el in [0, 1]:
+                    for _hv in [0, 1]:
+                        if _ym == 0 and _ys == 0 and _uts == 0 and _el == 0 and _hv == 0:
+                            continue
+                        target = [_ym, _ys, _uts, _el, _hv]
+                        model = Share_test(target).to(device)
+                        model_name = model.get_name()
+                        print(f"\nTraining model: {model_name}\n")
+                        model_dir = f'models/surrogate'
+                        log_dir = f'logs/surrogate'
+                        os.makedirs(model_dir, exist_ok=True)
+                        os.makedirs(log_dir, exist_ok=True)
+
+                        get_model(model,
+                            f'{model_dir}/model_{model_name}.pth',
+                            f'{model_dir}/data.pth',
+                            resume=False,
+                            train=True,
+                            save_path=f'{log_dir}/train_{model_name}.txt')
