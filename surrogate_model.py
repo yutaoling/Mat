@@ -880,11 +880,18 @@ class Fusion(nn.Module):
     def get_name(self):
         return f"Fusion_{self.connect_mode}"
 
-class Share_test(nn.Module):
-    def __init__(self, target = [1, 1, 1, 1, 1]):
-        super(Share_test, self).__init__()
+class Share(nn.Module):
+    def __init__(self, target = [1, 1, 1, 1, 1], Pr = True, Ph = True):
+        super(Share, self).__init__()
         self.target = target
-        self.fc = nn.Linear(N_ELEM + N_ELEM_FEAT + N_PROC_BOOL + N_PROC_SCALAR + N_PHASE_SCALAR, N_FC_NERON)
+        self.Pr = Pr
+        self.Ph = Ph
+        self._n_in_dnn = N_ELEM
+        if self.Pr:
+            self._n_in_dnn += N_PROC_BOOL + N_PROC_SCALAR
+        if self.Ph:
+            self._n_in_dnn += N_PHASE_SCALAR
+        self.fc = nn.Linear(self._n_in_dnn, N_FC_NERON)
         self.out = nn.Linear(N_FC_NERON, sum(self.target))
         self.af = nn.LeakyReLU(LEAKY_RATE)
         self.learned_mask = LearnedMaskedProc()
@@ -903,13 +910,11 @@ class Share_test(nn.Module):
         proc_bool_mask_r = proc_bool_mask.reshape(batch_size, -1)
         proc_scalar_mask_r = proc_scalar_mask.reshape(batch_size, -1)
         proc_bool, proc_scalar = self.learned_mask(proc_bool, proc_scalar, proc_bool_mask_r, proc_scalar_mask_r)
-        
-        mef = torch.sum(comp.squeeze(-1).squeeze(1).unsqueeze(-1) * elem_feat.squeeze(1), dim=1)
-        x = torch.cat([comp.reshape(-1, N_ELEM), 
-            mef,
-            proc_bool.reshape(-1, N_PROC_BOOL),
-            proc_scalar.reshape(-1, N_PROC_SCALAR),
-            phase_scalar.reshape(-1, N_PHASE_SCALAR)], dim=-1)
+        x = comp.reshape(-1, N_ELEM)
+        if self.Pr:
+            x = torch.cat([x, proc_bool.reshape(-1, N_PROC_BOOL), proc_scalar.reshape(-1, N_PROC_SCALAR)], dim=-1)
+        if self.Ph:
+            x = torch.cat([x, phase_scalar.reshape(-1, N_PHASE_SCALAR)], dim=-1)
         x = self.af(self.fc(x))
         x = self.out(x)
         out = torch.zeros(batch_size, N_PROP, device=device)
@@ -920,7 +925,45 @@ class Share_test(nn.Module):
         return out
 
     def get_name(self):
-        return f"Share_test_{''.join(str(t) for t in self.target)}"
+        name = f"Share_{''.join(str(t) for t in self.target)}"
+        if self.Pr:
+            name += "_Pr"
+        if self.Ph:
+            name += "_Ph"
+        return name
+
+class Final(nn.Module):
+    def __init__(self):
+        super(Final, self).__init__()
+        self.model_dir = f'models/surrogate'
+        self.model_ym = Share(target=[1, 0, 1, 0, 1], Pr=True, Ph=False).to(device)
+        self.model_ym.load_state_dict(torch.load(f'{self.model_dir}/model_{self.model_ym.get_name()}.pth', map_location=device))
+        self.model_ys = Share(target=[1, 1, 0, 1, 1], Pr=True, Ph=False).to(device)
+        self.model_ys.load_state_dict(torch.load(f'{self.model_dir}/model_{self.model_ys.get_name()}.pth', map_location=device))
+        self.model_uts = Share(target=[1, 0, 1, 1, 0], Pr=True, Ph=False).to(device)
+        self.model_uts.load_state_dict(torch.load(f'{self.model_dir}/model_{self.model_uts.get_name()}.pth', map_location=device))
+        self.model_el = Share(target=[0, 0, 0, 1, 1], Pr=False, Ph=False).to(device)
+        self.model_el.load_state_dict(torch.load(f'{self.model_dir}/model_{self.model_el.get_name()}.pth', map_location=device))
+        self.model_hv = Share(target=[1, 1, 0, 1, 1], Pr=True, Ph=False).to(device)
+        self.model_hv.load_state_dict(torch.load(f'{self.model_dir}/model_{self.model_hv.get_name()}.pth', map_location=device))
+
+    def forward(self, comp, elem_feat, proc_bool, proc_scalar, phase_scalar, proc_bool_mask, proc_scalar_mask, scalers = None):
+        ym = self.model_ym(comp, elem_feat, proc_bool, proc_scalar, phase_scalar, proc_bool_mask, proc_scalar_mask, scalers)
+        ym = ym[:, 0:1]
+        ys = self.model_ys(comp, elem_feat, proc_bool, proc_scalar, phase_scalar, proc_bool_mask, proc_scalar_mask, scalers)
+        ys = ys[:, 1:2]
+        uts = self.model_uts(comp, elem_feat, proc_bool, proc_scalar, phase_scalar, proc_bool_mask, proc_scalar_mask, scalers)
+        uts = uts[:, 2:3]
+        el = self.model_el(comp, elem_feat, proc_bool, proc_scalar, phase_scalar, proc_bool_mask, proc_scalar_mask, scalers)
+        el = el[:, 3:4]
+        hv = self.model_hv(comp, elem_feat, proc_bool, proc_scalar, phase_scalar, proc_bool_mask, proc_scalar_mask, scalers)
+        hv = hv[:, 4:5]
+        out = torch.cat([ym, ys, uts, el, hv], dim=-1)
+        return out
+
+    def get_name(self):
+        return "Final"
+
 
 def MODEL_LIST(mask_mode: str) -> list:
     model_list = []
@@ -970,7 +1013,11 @@ if __name__ == '__main__':
                         if _ym == 0 and _ys == 0 and _uts == 0 and _el == 0 and _hv == 0:
                             continue
                         target = [_ym, _ys, _uts, _el, _hv]
-                        model = Share_test(target).to(device)
-                        print(f"{model.get_name()} {list(model(*test_input).size())}")
+                        for Pr in [True, False]:
+                            for Ph in [True, False]:
+                                model = Share(target, Pr, Ph).to(device)
+                                print(f"{model.get_name()} {list(model(*test_input).size())}")
+    model = Final().to(device)
+    print(f"{model.get_name()} {list(model(*test_input).size())}")
 
     

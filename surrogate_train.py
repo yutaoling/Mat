@@ -530,17 +530,19 @@ if __name__ == '__main__':
                         if _ym == 0 and _ys == 0 and _uts == 0 and _el == 0 and _hv == 0:
                             continue
                         target = [_ym, _ys, _uts, _el, _hv]
-                        model = Share_test(target).to(device)
-                        model_name = model.get_name()
-                        print(f"\nTraining model: {model_name}\n")
-                        model_dir = f'models/surrogate'
-                        log_dir = f'logs/surrogate'
-                        os.makedirs(model_dir, exist_ok=True)
-                        os.makedirs(log_dir, exist_ok=True)
+                        for Pr in {True, False}:
+                            for Ph in {True, False}:
+                                model = Share(target, Pr, Ph).to(device)
+                                model_name = model.get_name()
+                                print(f"\nTraining model: {model_name}\n")
+                                model_dir = f'models/surrogate'
+                                log_dir = f'logs/surrogate'
+                                os.makedirs(model_dir, exist_ok=True)
+                                os.makedirs(log_dir, exist_ok=True)
 
-                        get_model(model,
-                            f'{model_dir}/model_{model_name}.pth',
-                            f'{model_dir}/data.pth',
-                            resume=False,
-                            train=True,
-                            save_path=f'{log_dir}/train_{model_name}.txt')
+                                get_model(model,
+                                    f'{model_dir}/model_{model_name}.pth',
+                                    f'{model_dir}/data.pth',
+                                    resume=False,
+                                    train=True,
+                                    save_path=f'{log_dir}/train_{model_name}.txt')

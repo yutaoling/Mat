@@ -66,13 +66,26 @@ def surrogate_compare():
     
     train_d, val_d, scalers = joblib.load('models/surrogate/data.pth')
     mask_modes = ['zero', 'learned', 'mean_dropout', 'sample_dropout']
-    for _type in ['val']:
-        for mask_mode in mask_modes:
-            for model in MODEL_LIST(mask_mode = mask_mode):
-                results, index = compare(model, val_d, results, index, scalers)
+    for mask_mode in mask_modes:
+        for model in MODEL_LIST(mask_mode = mask_mode):
+            results, index = compare(model, val_d, results, index, scalers)
     for connect_mode in ['jump', 'emb', 'sep', 'sep_all']:
-        model = TiAlloyNet(connect_mode=connect_mode).to(device)
+        model = Fusion(connect_mode=connect_mode).to(device)
         results, index = compare(model, val_d, results, index, scalers)
+    for _ym in [0, 1]:
+        for _ys in [0, 1]:
+            for _uts in [0, 1]:
+                for _el in [0, 1]:
+                    for _hv in [0, 1]:
+                        if _ym == 0 and _ys == 0 and _uts == 0 and _el == 0 and _hv == 0:
+                            continue
+                        target = [_ym, _ys, _uts, _el, _hv]
+                        for Pr in [True, False]:
+                            for Ph in [True, False]:
+                                model = Share(target, Pr, Ph).to(device)
+                                results, index = compare(model, val_d, results, index, scalers)
+    model = Final().to(device)
+    results, index = compare(model, val_d, results, index, scalers)
     results.to_excel(f'results/surrogate_comparison.xlsx', index=False)
     
 if __name__ == "__main__":
