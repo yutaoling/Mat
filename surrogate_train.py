@@ -533,6 +533,8 @@ if __name__ == '__main__':
                         target = [_ym, _ys, _uts, _el, _hv]
                         for Pr in [True, False]:
                             for Ph in [True, False]:
+                                if not Pr and not Ph:
+                                    continue
                                 model = Share(target, Pr, Ph).to(device)
                                 model_name = model.get_name()
                                 print(f"\nTraining model: {model_name}\n")
