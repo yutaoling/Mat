@@ -531,8 +531,8 @@ if __name__ == '__main__':
                         if _ym == 0 and _ys == 0 and _uts == 0 and _el == 0 and _hv == 0:
                             continue
                         target = [_ym, _ys, _uts, _el, _hv]
-                        for Pr in {True, False}:
-                            for Ph in {True, False}:
+                        for Pr in [True, False]:
+                            for Ph in [True, False]:
                                 model = Share(target, Pr, Ph).to(device)
                                 model_name = model.get_name()
                                 print(f"\nTraining model: {model_name}\n")
