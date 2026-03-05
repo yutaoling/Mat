@@ -195,6 +195,7 @@ class CustomDataset(Dataset):
 def get_dataloader(data_tuple, batch_size = 16, augment = False, target = None) -> DataLoader:
     id_data, comp_data, proc_bool_data, proc_scalar_data, phase_scalar_data, prop_data, \
         elem_feature, proc_bool_mask, proc_scalar_mask, prop_mask = data_tuple
+    prop_mask = prop_mask.copy()
     if target is not None:
         for i, t in enumerate(target):
             if t == 0:
