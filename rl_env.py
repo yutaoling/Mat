@@ -585,13 +585,19 @@ class State:
         if ep >= self.__max_episode_len -1 :
             return True
         
-        # 成分阶段：未完成
+        # 成分阶段：尚未完成
+        if ep < COMP_EPISODE_LEN:
+            return False
+
+        # 工艺阶段：允许根据分支提前结束
+        # ep==21 对应 HT1 决策；若不进行 HT1，则后续参数无意义
         if ep >= 21 and self.__ht1_decision == 0:
             return True
-        elif ep >= 25 and self.__ht2_decision == 0:
+        # ep==25 对应 HT2 决策；若不进行 HT2，则后续参数无意义
+        if ep >= 25 and self.__ht2_decision == 0:
             return True
-        else:
-            return True
+        # 正常完整流程在 HT2 冷却方式之后结束
+        return ep >= 28
 
     def get_action_idx_limits(self):
         '''
@@ -648,54 +654,49 @@ class State:
         
         if ep == 18:  # 初始状态选择
             mask[0:2] = True
-        elif ep == 19:  # 变形决策
-            if self.__is_wrought == 1:
-                mask[0:2] = True
-            else:
-                mask[0] = True  # 只能选择不变形（实际上应该跳过）
-        elif ep == 20:  # Def_Temp
+        elif ep == 19:  # Def_Temp
             if self.__is_wrought == 1:
                 mask[0:len(DEF_TEMP_CANDIDATES)] = True
             else:
                 mask[0] = True  # 只能选择0
-        elif ep == 21:  # Def_Strain
+        elif ep == 20:  # Def_Strain
             if self.__is_wrought == 1:
                 mask[0:len(DEF_STRAIN_CANDIDATES)] = True
             else:
                 mask[0] = True
-        elif ep == 22:  # HT1决策
+        elif ep == 21:  # HT1决策
             mask[0:2] = True
-        elif ep == 23:  # HT1_Temp
+        elif ep == 22:  # HT1_Temp
             if self.__ht1_decision == 1:
                 mask[0:len(HT1_TEMP_CANDIDATES)] = True
             else:
                 mask[0] = True
-        elif ep == 24:  # HT1_Time
+        elif ep == 23:  # HT1_Time
             if self.__ht1_decision == 1:
                 mask[0:len(HT1_TIME_CANDIDATES)] = True
             else:
                 mask[0] = True
-        elif ep == 25:  # HT1_冷却方式
+        elif ep == 24:  # HT1_冷却方式
             if self.__ht1_decision == 1:
                 mask[0:3] = True
             else:
                 mask[0] = True
-        elif ep == 26:  # HT2决策
+        elif ep == 25:  # HT2决策
             if self.__ht1_decision == 1:
                 mask[0:2] = True
             else:
                 mask[0] = True  # 只能选择不进行
-        elif ep == 27:  # HT2_Temp
+        elif ep == 26:  # HT2_Temp
             if self.__ht1_decision == 1 and self.__ht2_decision == 1:
                 mask[0:len(HT2_TEMP_CANDIDATES)] = True
             else:
                 mask[0] = True
-        elif ep == 28:  # HT2_Time
+        elif ep == 27:  # HT2_Time
             if self.__ht1_decision == 1 and self.__ht2_decision == 1:
                 mask[0:len(HT2_TIME_CANDIDATES)] = True
             else:
                 mask[0] = True
-        elif ep == 29:  # HT2_冷却方式
+        elif ep == 28:  # HT2_冷却方式
             if self.__ht1_decision == 1 and self.__ht2_decision == 1:
                 mask[0:3] = True
             else:
