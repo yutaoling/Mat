@@ -442,7 +442,7 @@ def train_a_model(model = None,
                 print(f"Predicted: {predicted_inv.flatten()}")
                 print(f"Actual: {actual_inv.flatten()}")
 
-        if epoch > 499:
+        if epoch > 299:
             if early_stopper.step(val_loss, model) and val_loss < 1.0:
                 print(f"[EarlyStopping] Stop at epoch {epoch}")
                 break

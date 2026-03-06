@@ -936,15 +936,15 @@ class Final(nn.Module):
     def __init__(self):
         super(Final, self).__init__()
         self.model_dir = f'models/surrogate'
-        self.model_ym = Share(target=[1, 0, 1, 0, 1], Pr=True, Ph=True).to(device)
+        self.model_ym = Share(target=[1, 0, 0, 1, 0], Pr=True, Ph=True).to(device)
         self.model_ym.load_state_dict(torch.load(f'{self.model_dir}/model_{self.model_ym.get_name()}.pth', map_location=device))
-        self.model_ys = Share(target=[1, 1, 0, 1, 1], Pr=True, Ph=True).to(device)
+        self.model_ys = Share(target=[1, 1, 1, 1, 0], Pr=True, Ph=False).to(device)
         self.model_ys.load_state_dict(torch.load(f'{self.model_dir}/model_{self.model_ys.get_name()}.pth', map_location=device))
-        self.model_uts = Share(target=[1, 0, 1, 1, 0], Pr=True, Ph=True).to(device)
+        self.model_uts = Share(target=[1, 1, 1, 1, 0], Pr=True, Ph=False).to(device)
         self.model_uts.load_state_dict(torch.load(f'{self.model_dir}/model_{self.model_uts.get_name()}.pth', map_location=device))
-        self.model_el = Share(target=[0, 0, 0, 1, 1], Pr=True, Ph=True).to(device)
+        self.model_el = Share(target=[0, 0, 0, 1, 0], Pr=True, Ph=False).to(device)
         self.model_el.load_state_dict(torch.load(f'{self.model_dir}/model_{self.model_el.get_name()}.pth', map_location=device))
-        self.model_hv = Share(target=[1, 1, 0, 1, 1], Pr=True, Ph=True).to(device)
+        self.model_hv = Share(target=[1, 0, 0, 0, 1], Pr=True, Ph=False).to(device)
         self.model_hv.load_state_dict(torch.load(f'{self.model_dir}/model_{self.model_hv.get_name()}.pth', map_location=device))
 
     def forward(self, comp, elem_feat, proc_bool, proc_scalar, phase_scalar, proc_bool_mask, proc_scalar_mask, scalers = None):
@@ -1018,6 +1018,7 @@ if __name__ == '__main__':
                                 model = Share(target, Pr, Ph).to(device)
                                 print(f"{model.get_name()} {list(model(*test_input).size())}")
     model = Final().to(device)
+    torch.save(model.state_dict(), f'models/surrogate/model_{model.get_name()}.pth')
     print(f"{model.get_name()} {list(model(*test_input).size())}")
 
     

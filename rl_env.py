@@ -159,17 +159,17 @@ STATE_DELIMETER_CHAR = '*'
 
 # TODO move get_ground_truth_func and get_mo_ground_truth_func -> utils.py
 
-def get_ground_truth_func_with_proc(model_path = 'models/surrogate/model_TiAlloyNet_sep.pth', data_path = 'models/surrogate/data.pth'):
+def get_ground_truth_func_with_proc(model_path = 'models/surrogate/model_Final.pth', data_path = 'models/surrogate/data.pth'):
     '''
         Return the func that maps (composition, proc_bool, proc_scalar, phase_scalar) -> mechanical property.
         支持完整工艺参数输入
     '''
-    from surrogate_model import TiAlloyNet
+    from surrogate_model import Final
     # 抑制 sklearn 版本不匹配警告
     with warnings.catch_warnings():
         from sklearn.base import InconsistentVersionWarning
         warnings.filterwarnings('ignore', category=InconsistentVersionWarning)
-        model, train_d, val_d, scalers = get_model(model=TiAlloyNet(connect_mode='sep'), model_path=model_path, data_path=data_path, resume=True, train=False)
+        model, train_d, val_d, scalers = get_model(model=Final(), model_path=model_path, data_path=data_path, resume=True, train=False)
     model.to(device)
     model.eval()
 
@@ -295,7 +295,7 @@ def calculate_phase_scalar(composition):
     return np.array([mo_eq, al_eq, beta_transform_T], dtype=np.float32)
 
 def get_mo_ground_truth_func():
-    _func = get_ground_truth_func_with_proc(model_path = 'models/surrogate/model_TiAlloyNet_sep.pth', data_path = 'models/surrogate/data.pth')
+    _func = get_ground_truth_func_with_proc(model_path = 'models/surrogate/model_Final.pth', data_path = 'models/surrogate/data.pth')
 
     _mo_scale = np.array([
         70,

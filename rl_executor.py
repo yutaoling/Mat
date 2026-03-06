@@ -20,7 +20,7 @@ from rl_dqn_agents import (
 from surrogate_model import ID, COMP, PROC_BOOL, PROC_SCALAR, PHASE_SCALAR, PROP
 import torch
 import os
-N_JOBS=5
+N_JOBS=1
 
 if torch.cuda.is_available():
     try:
