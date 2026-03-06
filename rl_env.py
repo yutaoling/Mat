@@ -585,13 +585,21 @@ class State:
         if ep >= self.__max_episode_len -1 :
             return True
         
-        # 成分阶段：未完成
+        # 成分阶段：尚未完成
+        if ep < COMP_EPISODE_LEN:
+            return False
+
+        # 工艺阶段：允许根据分支提前结束
+        # ep==21 对应 HT1 决策；若不进行 HT1，则后续参数无意义
         if ep >= 21 and self.__ht1_decision == 0:
             return True
-        elif ep >= 25 and self.__ht2_decision == 0:
+
+        # ep==25 对应 HT2 决策；若不进行 HT2，则后续参数无意义
+        if ep >= 25 and self.__ht2_decision == 0:
             return True
-        else:
-            return True
+
+        # 正常完整流程在 HT2 冷却方式之后结束
+        return ep >= 28
 
     def get_action_idx_limits(self):
         '''
