@@ -54,18 +54,17 @@ DEFUALT_EPSILON_DECAY = 0.9995  # 大幅降低衰减速度：200ep后epsilon≈0
 class DQNAgent:
     def __init__(self, env: Environment = Environment(), random_seed=None):
         self.env           = env
-        self.state_dim     = self.env.state_dim  # 37维
-        self.action_size   = self.env.act_dim    # 最大动作空间
-        self.lr            = 1e-3                       # 5e-4, 1e-3
+        self.state_dim     = self.env.state_dim
+        self.action_size   = self.env.act_dim
+        self.lr            = 1e-3
         self.gamma         = GAMMA
-        self.epsilon       = DEFAULT_INIT_EPSILON       # 0.95
-        self.epsilon_decay = DEFUALT_EPSILON_DECAY      # TODO not sure 0.99 slow/fast enough, or should I choose another decay scheme?
+        self.epsilon       = DEFAULT_INIT_EPSILON
+        self.epsilon_decay = DEFUALT_EPSILON_DECAY
         self.epsilon_min   = DEFAULT_END_EPSILON
         self.targ_update_n = 10
         self.test_every    = 100
         self.memory        = ReplayBuffer(20000, 128, device, self.env)      # NOTE perhaps too large?
 
-        # 创建独立的随机数生成器，确保每个Agent使用不同的随机状态
         if random_seed is not None:
             self.rng = np.random.RandomState(random_seed)
         else:
@@ -390,7 +389,7 @@ def train_one_ep(agent: DQNAgent, env: Environment, EP: int):
     # 调试输出（每100个episode输出一次）
     if EP % 100 == 0 and EP > 0:
         unique_actions = len(set(action_sequence))
-        comp_actions = [a for a in action_sequence[:COMP_EPISODE_LEN] if a < len(ALL_ACTIONS)]
+        comp_actions = [a for a in action_sequence[:COMP_EPISODE_LEN] if a < len(COMP_ACTIONS)]
         proc_actions = action_sequence[COMP_EPISODE_LEN:]
         
         # 检查成分动作多样性
@@ -460,7 +459,7 @@ def collect_random(env, dataset, num_samples=200, random_seed=None):
             # 成分阶段：使用generate_random_action返回的动作值
             # 传入随机状态以确保可重复性
             action = state.generate_random_action(rng)
-            action_idx = ALL_ACTIONS.index(action)
+            action_idx = COMP_ACTIONS.index(action)
         else:
             # 工艺阶段：使用动作掩码确保选择有效动作
             action_mask = state.get_action_mask()

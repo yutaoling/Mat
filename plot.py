@@ -142,6 +142,9 @@ def plot_prediction_scatter(model=None):
     """绘制验证集上真实值-预测值对比的对角线图"""
     import torch
     from sklearn.metrics import r2_score, mean_absolute_error, mean_squared_error
+    import warnings
+    from sklearn.exceptions import InconsistentVersionWarning
+    warnings.filterwarnings("ignore", category=InconsistentVersionWarning)
     
     setup_plot_style()
     
@@ -207,13 +210,6 @@ def plot_prediction_scatter(model=None):
         
         ax.scatter(y_true, y_pred, alpha=0.6, s=30, c='#3498db', edgecolors='white', linewidth=0.5)
         
-        min_val = min(y_true.min(), y_pred.min())
-        max_val = max(y_true.max(), y_pred.max())
-        margin = (max_val - min_val) * 0.1
-        line_range = [min_val - margin, max_val + margin]
-        ax.plot(line_range, line_range, 'r--', linewidth=1, label='y=x')
-        ax.fill_between(line_range, [x * 0.9 for x in line_range], [x * 1.1 for x in line_range],
-                       alpha=0.15, color='green', label='±10%')
         
         r2 = r2_score(y_true, y_pred)
         mae = mean_absolute_error(y_true, y_pred)
@@ -227,10 +223,49 @@ def plot_prediction_scatter(model=None):
         ax.set_xlabel(f'Actual {prop_name} ({unit})', fontsize=10)
         ax.set_ylabel(f'Predicted {prop_name} ({unit})', fontsize=10)
         ax.set_title(f'{full_prop_names[i]}', fontsize=12, fontweight='bold')
-        ax.legend(loc='lower right', fontsize=6)
-        ax.set_xlim(line_range)
-        ax.set_ylim(line_range)
+        
+        if prop_name == 'YM':
+            ax.plot([0, 200], [0, 200], 'r--', linewidth=1, label='y=x')
+            ax.fill_between([0, 200], [x * 0.9 for x in [0, 200]], [x * 1.1 for x in [0, 200]],
+                            alpha=0.15, color='green', label='±10%')
+            ax.set_xticks(range(0, 201, 50))
+            ax.set_yticks(range(0, 201, 50))
+            ax.set_xlim(0, 200)
+            ax.set_ylim(0, 200)
+        elif prop_name == 'YS':
+            ax.plot([0, 2000], [0, 2000], 'r--', linewidth=1, label='y=x')
+            ax.fill_between([0, 2000], [x * 0.9 for x in [0, 2000]], [x * 1.1 for x in [0, 2000]],
+                            alpha=0.15, color='green', label='±10%')
+            ax.set_xticks(range(0, 2001, 500))
+            ax.set_yticks(range(0, 2001, 500))
+            ax.set_xlim(0, 2000)
+            ax.set_ylim(0, 2000)
+        elif prop_name == 'UTS':
+            ax.plot([0, 2000], [0, 2000], 'r--', linewidth=1, label='y=x')
+            ax.fill_between([0, 2000], [x * 0.9 for x in [0, 2000]], [x * 1.1 for x in [0, 2000]],
+                            alpha=0.15, color='green', label='±10%')
+            ax.set_xticks(range(0, 2001, 500))
+            ax.set_yticks(range(0, 2001, 500))
+            ax.set_xlim(0, 2000)
+            ax.set_ylim(0, 2000)
+        elif prop_name == 'El':
+            ax.plot([0, 50], [0, 50], 'r--', linewidth=1, label='y=x')
+            ax.fill_between([0, 50], [x * 0.9 for x in [0, 50]], [x * 1.1 for x in [0, 50]],
+                            alpha=0.15, color='green', label='±10%')
+            ax.set_xticks(range(0, 51, 10))
+            ax.set_yticks(range(0, 51, 10))
+            ax.set_xlim(0, 50)
+            ax.set_ylim(0, 50)
+        elif prop_name == 'HV':
+            ax.plot([0, 500], [0, 500], 'r--', linewidth=1, label='y=x')
+            ax.fill_between([0, 500], [x * 0.9 for x in [0, 500]], [x * 1.1 for x in [0, 500]],
+                            alpha=0.15, color='green', label='±10%')
+            ax.set_xticks(range(0, 501, 100))
+            ax.set_yticks(range(0, 501, 100))
+            ax.set_xlim(0, 500)
+            ax.set_ylim(0, 500)
         ax.set_aspect('equal')
+        ax.legend(loc='lower right', fontsize=6)
         ax.grid(True, alpha=0.3)
     
     for i in range(len(prop_names), len(axes)):
