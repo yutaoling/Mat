@@ -1,2 +1,0 @@
-﻿id,Activated,Ti,Al,V,Cr,Mn,Fe,Cu,Zr,Nb,Mo,Sn,Hf,Ta,W,Si,C,N,O,Sc,Is_Not_Wrought,Is_Wrought,HT1,HT1_Quench,HT1_Air,HT1_Furnace,HT2,HT2_Quench,HT2_Air,Def_Temp,Def_Strain,HT1_Temp,HT1_Time,HT2_Temp,HT2_Time,Mo_eq,Al_eq,beta_transform_T,YM,YS,UTS,El,HV
-16311,1,60.0,10.0,7.5,8.3,0.0,0.0,0.0,0.0,0.1,14.1,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0,1,0,0,0,0,0,0,0,0.0,0.0,0.0,0.0,0.0,0.0,22.43,10.0,580.12,64.4,1790.3,1673.6,-7.3,576.4
