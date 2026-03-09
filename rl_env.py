@@ -341,6 +341,8 @@ class Environment:
         self.init_world_model()
         self.state_dim = len(self.reset().repr())
         self.act_dim = max(COMP_ACTIONS_COUNT, MAX_PROC_ACTION_SPACE)
+        self.top_k = 10
+        self.top_results = []
         self.best_score = float('-inf')
         self.best_x = None
         self.best_prop = None
@@ -353,6 +355,7 @@ class Environment:
         """Reset archive and best-tracking states to a clean baseline."""
         self.surrogate_buffer = set()
         self.surrogate_buffer_list = []
+        self.top_results = []
         self.best_score = float('-inf')
         self.best_x = None
         self.best_prop = None
@@ -449,6 +452,59 @@ class Environment:
         comp = [rng.uniform(COMP_MIN_LIMITS[i], COMP_MAX_LIMITS[i]) for i in range(ELEM_N)]
         return self._normalize_and_constrain_composition(comp)
 
+    def _refresh_best_from_top(self):
+        """Keep legacy best_* fields consistent with top_results."""
+        if not self.top_results:
+            self.best_score = float('-inf')
+            self.best_x = None
+            self.best_prop = None
+            return
+        top = self.top_results[0]
+        self.best_score = float(top['score'])
+        self.best_x = deepcopy(top['x'])
+        self.best_prop = np.asarray(top['prop'], dtype=float).copy()
+
+    def _update_top_results(self, score, comp, proc_bool, proc_scalar, phase, prop):
+        """Insert or update one design in top-k leaderboard."""
+        design_key = State.encode_key(list(comp) + list(proc_bool) + list(proc_scalar) + list(phase))
+        score = float(score)
+        x_data = {
+            'comp': list(comp),
+            'proc_bool': np.asarray(proc_bool, dtype=np.float32).copy(),
+            'proc_scalar': np.asarray(proc_scalar, dtype=np.float32).copy(),
+            'phase': np.asarray(phase, dtype=np.float32).copy(),
+        }
+        prop_data = np.asarray(prop, dtype=float).copy()
+
+        existing_idx = None
+        for i, item in enumerate(self.top_results):
+            if item['key'] == design_key:
+                existing_idx = i
+                break
+
+        if existing_idx is not None:
+            if score <= self.top_results[existing_idx]['score']:
+                self._refresh_best_from_top()
+                return
+            self.top_results[existing_idx] = {
+                'key': design_key,
+                'score': score,
+                'x': x_data,
+                'prop': prop_data,
+            }
+        else:
+            self.top_results.append({
+                'key': design_key,
+                'score': score,
+                'x': x_data,
+                'prop': prop_data,
+            })
+
+        self.top_results.sort(key=lambda item: item['score'], reverse=True)
+        if len(self.top_results) > self.top_k:
+            self.top_results = self.top_results[:self.top_k]
+        self._refresh_best_from_top()
+
     def init_surrogate(self, init_N, seed):
         """Initialize archive with random feasible designs."""
         rng = ensure_rng(seed)
@@ -474,15 +530,7 @@ class Environment:
                 'proc_scalar': proc_scalar,
                 'phase': phase,
             })
-            if score > self.best_score:
-                self.best_score = score
-                self.best_x = {
-                    'comp': comp,
-                    'proc_bool': proc_bool,
-                    'proc_scalar': proc_scalar,
-                    'phase': phase,
-                }
-                self.best_prop = prop
+            self._update_top_results(score, comp, proc_bool, proc_scalar, phase, prop)
 
     def reset(self):
         """Reset to an empty decision state."""
@@ -523,16 +571,17 @@ class Environment:
             ht2_cooling_display = "PENDING"
         else:
             ht2_cooling_display = ht2_cooling
-        print(
+        phase = calculate_phase_scalar(comp)
+
+        reward, prop, feasible = self._evaluate_design(comp, proc_bool, proc_scalar, phase)
+        '''print(
             f"[step={next_state.get_episode_count()}] "
             f"comp={comp}; "
             f"DEF(is_wrought={is_wrought}, temp={float(proc_scalar[0]):.3f}, strain={float(proc_scalar[1]):.3f}); "
             f"HT1(decision={ht1_decision}, temp={float(proc_scalar[2]):.3f}, time={float(proc_scalar[3]):.3f}, cooling={ht1_cooling_display}); "
-            f"HT2(decision={ht2_decision}, temp={float(proc_scalar[4]):.3f}, time={float(proc_scalar[5]):.3f}, cooling={ht2_cooling_display})"
-        )
-        phase = calculate_phase_scalar(comp)
-
-        reward, prop, feasible = self._evaluate_design(comp, proc_bool, proc_scalar, phase)
+            f"HT2(decision={ht2_decision}, temp={float(proc_scalar[4]):.3f}, time={float(proc_scalar[5]):.3f}, cooling={ht2_cooling_display}); "
+            f"reward={float(reward):.6f}"
+        )'''
 
         done = next_state.done()
         if done and feasible:
@@ -546,15 +595,7 @@ class Environment:
                     'phase': phase,
                 })
 
-            if reward > self.best_score:
-                self.best_score = reward
-                self.best_x = {
-                    'comp': comp,
-                    'proc_bool': proc_bool,
-                    'proc_scalar': proc_scalar,
-                    'phase': phase,
-                }
-                self.best_prop = prop
+            self._update_top_results(reward, comp, proc_bool, proc_scalar, phase, prop)
 
             try:
                 self.update_mo_weights(method='improvement', window=50)
@@ -576,6 +617,18 @@ class Environment:
 
     def get_best_prop(self):
         return self.best_prop
+
+    def get_top_results(self, k=10):
+        k = max(1, int(k))
+        top = self.top_results[:k]
+        out = []
+        for item in top:
+            out.append({
+                'score': float(item['score']),
+                'x': deepcopy(item['x']),
+                'prop': np.asarray(item['prop'], dtype=float).copy(),
+            })
+        return out
 
     def get_exp_number(self):
         return len(self.surrogate_buffer) - self.init_N
