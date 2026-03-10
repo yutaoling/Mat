@@ -5,7 +5,7 @@ from copy import deepcopy
 import numpy as np
 from bayes_opt.util import ensure_rng
 
-from surrogate_model import N_PROC_BOOL, N_PROC_SCALAR
+from surrogate_model import N_PROC_BOOL, N_PROC_SCALAR, PROP
 from rl_constants import *
 
 
@@ -342,7 +342,9 @@ class Environment:
         self.state_dim = len(self.reset().repr())
         self.act_dim = max(COMP_ACTIONS_COUNT, MAX_PROC_ACTION_SPACE)
         self.top_k = 10
+        self.training_step = 0
         self.top_results = []
+        self.result_history = []
         self.best_score = float('-inf')
         self.best_x = None
         self.best_prop = None
@@ -353,9 +355,11 @@ class Environment:
 
     def reset_archive(self, init_N=0):
         """Reset archive and best-tracking states to a clean baseline."""
+        self.training_step = 0
         self.surrogate_buffer = set()
         self.surrogate_buffer_list = []
         self.top_results = []
+        self.result_history = []
         self.best_score = float('-inf')
         self.best_x = None
         self.best_prop = None
@@ -376,13 +380,30 @@ class Environment:
         arr = np.asarray(prop, dtype=float)
         return bool(np.all(np.isfinite(arr)))
 
+    @staticmethod
+    def _constraint_penalty(prop) -> float:
+        """Large penalty for physically invalid predictions."""
+        arr = np.asarray(prop, dtype=float)
+        if arr.size == 0 or not np.all(np.isfinite(arr)):
+            return 0.0
+
+        negative_penalty = float(np.sum(np.clip(-arr, 0.0, None)))
+
+        ys_idx = PROP.index('YS')
+        uts_idx = PROP.index('UTS')
+        ys_uts_penalty = float(max(arr[ys_idx] - arr[uts_idx], 0.0))
+
+        return 10.0 * negative_penalty + 10.0 * ys_uts_penalty
+
     def _evaluate_design(self, comp, proc_bool, proc_scalar, phase):
         """Predict properties and return (reward, prop, feasible)."""
         prop = self.raw_mo_func_with_proc(comp, proc_bool, proc_scalar, phase)
         feasible = self._is_valid_prop(prop)
         if not feasible:
             return 0.0, np.asarray(prop), False
-        reward = float(np.dot(np.asarray(prop, dtype=float) / self.mo_scale, self.mo_weights))
+        prop_arr = np.asarray(prop, dtype=float)
+        reward = float(np.dot(prop_arr / self.mo_scale, self.mo_weights))
+        reward -= self._constraint_penalty(prop_arr)
         return reward, np.asarray(prop), True
 
     def set_mo_weights(self, weights):
@@ -416,7 +437,7 @@ class Environment:
         prev_mean = np.mean(prev / self.mo_scale, axis=0)
         imp = recent_mean - prev_mean
         rank = np.argsort(np.argsort(imp))
-        weight_list = [1, 1, 1, 1, 1]
+        weight_list = [6, 5, 4, 3, 2, 1]
         w = np.array([weight_list[r] for r in rank], dtype=float)
         self.set_mo_weights(w)
 
@@ -464,6 +485,12 @@ class Environment:
         self.best_x = deepcopy(top['x'])
         self.best_prop = np.asarray(top['prop'], dtype=float).copy()
 
+    def set_training_step(self, step):
+        self.training_step = max(0, int(step))
+
+    def get_training_step(self):
+        return int(self.training_step)
+
     def _update_top_results(self, score, comp, proc_bool, proc_scalar, phase, prop):
         """Insert or update one design in top-k leaderboard."""
         design_key = State.encode_key(list(comp) + list(proc_bool) + list(proc_scalar) + list(phase))
@@ -486,16 +513,20 @@ class Environment:
             if score <= self.top_results[existing_idx]['score']:
                 self._refresh_best_from_top()
                 return
+            self._record_result_history(score, comp, proc_bool, proc_scalar, phase, prop)
             self.top_results[existing_idx] = {
                 'key': design_key,
                 'score': score,
+                'training_step': int(self.training_step),
                 'x': x_data,
                 'prop': prop_data,
             }
         else:
+            self._record_result_history(score, comp, proc_bool, proc_scalar, phase, prop)
             self.top_results.append({
                 'key': design_key,
                 'score': score,
+                'training_step': int(self.training_step),
                 'x': x_data,
                 'prop': prop_data,
             })
@@ -504,6 +535,20 @@ class Environment:
         if len(self.top_results) > self.top_k:
             self.top_results = self.top_results[:self.top_k]
         self._refresh_best_from_top()
+
+    def _record_result_history(self, score, comp, proc_bool, proc_scalar, phase, prop):
+        self.result_history.append({
+            'key': State.encode_key(list(comp) + list(proc_bool) + list(proc_scalar) + list(phase)),
+            'score': float(score),
+            'training_step': int(self.training_step),
+            'x': {
+                'comp': list(comp),
+                'proc_bool': np.asarray(proc_bool, dtype=np.float32).copy(),
+                'proc_scalar': np.asarray(proc_scalar, dtype=np.float32).copy(),
+                'phase': np.asarray(phase, dtype=np.float32).copy(),
+            },
+            'prop': np.asarray(prop, dtype=float).copy(),
+        })
 
     def init_surrogate(self, init_N, seed):
         """Initialize archive with random feasible designs."""
@@ -538,6 +583,7 @@ class Environment:
 
     def step(self, state: State, action_idx: int):
         """Environment step with dense scalarized performance reward."""
+        self.training_step += 1
         mask = state.get_action_mask()
         if action_idx < 0 or action_idx >= len(mask) or not mask[action_idx]:
             raise ValueError(
@@ -625,10 +671,121 @@ class Environment:
         for item in top:
             out.append({
                 'score': float(item['score']),
+                'training_step': int(item.get('training_step', 0)),
                 'x': deepcopy(item['x']),
                 'prop': np.asarray(item['prop'], dtype=float).copy(),
             })
         return out
+
+    def get_result_history(self):
+        out = []
+        for item in self.result_history:
+            out.append({
+                'score': float(item['score']),
+                'training_step': int(item.get('training_step', 0)),
+                'x': deepcopy(item['x']),
+                'prop': np.asarray(item['prop'], dtype=float).copy(),
+            })
+        return out
+
+    def get_checkpoint_state(self):
+        """Return archive state needed to resume RL search consistently."""
+        top_results = []
+        for item in self.top_results:
+            top_results.append({
+                'key': item['key'],
+                'score': float(item['score']),
+                'training_step': int(item.get('training_step', 0)),
+                'x': {
+                    'comp': list(item['x']['comp']),
+                    'proc_bool': np.asarray(item['x']['proc_bool'], dtype=np.float32).copy(),
+                    'proc_scalar': np.asarray(item['x']['proc_scalar'], dtype=np.float32).copy(),
+                    'phase': np.asarray(item['x']['phase'], dtype=np.float32).copy(),
+                },
+                'prop': np.asarray(item['prop'], dtype=float).copy(),
+            })
+
+        surrogate_buffer_list = []
+        for item in self.surrogate_buffer_list:
+            surrogate_buffer_list.append({
+                'comp': list(item['comp']),
+                'proc_bool': np.asarray(item['proc_bool'], dtype=np.float32).copy(),
+                'proc_scalar': np.asarray(item['proc_scalar'], dtype=np.float32).copy(),
+                'phase': np.asarray(item['phase'], dtype=np.float32).copy(),
+            })
+
+        result_history = []
+        for item in self.result_history:
+            result_history.append({
+                'key': item['key'],
+                'score': float(item['score']),
+                'training_step': int(item.get('training_step', 0)),
+                'x': {
+                    'comp': list(item['x']['comp']),
+                    'proc_bool': np.asarray(item['x']['proc_bool'], dtype=np.float32).copy(),
+                    'proc_scalar': np.asarray(item['x']['proc_scalar'], dtype=np.float32).copy(),
+                    'phase': np.asarray(item['x']['phase'], dtype=np.float32).copy(),
+                },
+                'prop': np.asarray(item['prop'], dtype=float).copy(),
+            })
+
+        return {
+            'top_results': top_results,
+            'result_history': result_history,
+            'surrogate_buffer': sorted(self.surrogate_buffer),
+            'surrogate_buffer_list': surrogate_buffer_list,
+            'mo_weights': np.asarray(self.mo_weights, dtype=float).copy(),
+            'init_N': int(self.init_N),
+            'training_step': int(self.training_step),
+        }
+
+    def load_checkpoint_state(self, checkpoint_state):
+        """Restore archive state from a previous checkpoint."""
+        self.top_results = []
+        for item in checkpoint_state.get('top_results', []):
+            self.top_results.append({
+                'key': item['key'],
+                'score': float(item['score']),
+                'training_step': int(item.get('training_step', 0)),
+                'x': {
+                    'comp': list(item['x']['comp']),
+                    'proc_bool': np.asarray(item['x']['proc_bool'], dtype=np.float32).copy(),
+                    'proc_scalar': np.asarray(item['x']['proc_scalar'], dtype=np.float32).copy(),
+                    'phase': np.asarray(item['x']['phase'], dtype=np.float32).copy(),
+                },
+                'prop': np.asarray(item['prop'], dtype=float).copy(),
+            })
+
+        self.surrogate_buffer = set(checkpoint_state.get('surrogate_buffer', []))
+        self.surrogate_buffer_list = []
+        for item in checkpoint_state.get('surrogate_buffer_list', []):
+            self.surrogate_buffer_list.append({
+                'comp': list(item['comp']),
+                'proc_bool': np.asarray(item['proc_bool'], dtype=np.float32).copy(),
+                'proc_scalar': np.asarray(item['proc_scalar'], dtype=np.float32).copy(),
+                'phase': np.asarray(item['phase'], dtype=np.float32).copy(),
+            })
+
+        self.result_history = []
+        for item in checkpoint_state.get('result_history', []):
+            self.result_history.append({
+                'key': item['key'],
+                'score': float(item['score']),
+                'training_step': int(item.get('training_step', 0)),
+                'x': {
+                    'comp': list(item['x']['comp']),
+                    'proc_bool': np.asarray(item['x']['proc_bool'], dtype=np.float32).copy(),
+                    'proc_scalar': np.asarray(item['x']['proc_scalar'], dtype=np.float32).copy(),
+                    'phase': np.asarray(item['x']['phase'], dtype=np.float32).copy(),
+                },
+                'prop': np.asarray(item['prop'], dtype=float).copy(),
+            })
+
+        self.init_N = int(checkpoint_state.get('init_N', self.init_N))
+        self.training_step = int(checkpoint_state.get('training_step', self.training_step))
+        if 'mo_weights' in checkpoint_state:
+            self.set_mo_weights(checkpoint_state['mo_weights'])
+        self._refresh_best_from_top()
 
     def get_exp_number(self):
         return len(self.surrogate_buffer) - self.init_N
