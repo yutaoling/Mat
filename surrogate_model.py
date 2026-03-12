@@ -10,9 +10,7 @@ torch.set_default_dtype(torch.float32)
 
 ID = ['id', 'Activated', 'Complete_Condition']
 COMP = [
-    'Ti', 'Al', 'V', 'Cr', 'Mn', 'Fe', 'Cu', 
-    'Zr', 'Nb', 'Mo', 'Sn', 'Hf', 'Ta', 'W', 
-    'Si', 'C', 'N', 'O', 'Sc'
+    'Ti', 'Al', 'V', 'Cr', 'Fe', 'Zr', 'Nb', 'Mo', 'Sn', 'Ta'
     ]
 PROC_BOOL=[
     'Is_Not_Wrought', 'Is_Wrought',

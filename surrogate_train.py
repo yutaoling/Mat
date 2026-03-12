@@ -490,7 +490,6 @@ def get_model(model = None,
 if __name__ == '__main__':
     mask_modes = ['zero', 'learned', 'mean_dropout', 'sample_dropout']
     for mask_mode in mask_modes:
-        break
         for model in MODEL_LIST(mask_mode = mask_mode):
             model_name = model.get_name()
             print(f"\nTraining model: {model_name}\n")
@@ -507,7 +506,6 @@ if __name__ == '__main__':
                 save_path=f'{log_dir}/train_{model_name}.txt')
     
     for connect_mode in ['jump', 'emb', 'sep', 'sep_all']:
-        break
         model = Fusion(connect_mode=connect_mode).to(device)
         model_name = model.get_name()
         print(f"\nTraining model: {model_name}\n")
