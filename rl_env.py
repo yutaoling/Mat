@@ -92,97 +92,95 @@ class State:
     def _update_proc_params(self, action_idx: int):
         ep = self.__episode_count
 
-        if ep == 18:
+        if ep == PROC_EP_WROUGHT:
             if action_idx not in (0, 1):
                 raise ValueError(f"is_wrought action must be 0 or 1, got {action_idx}")
             self.__is_wrought = int(action_idx)
             if action_idx == 1:
-                self.__proc_bool[0] = 0
-                self.__proc_bool[1] = 1
-            else:
                 self.__proc_bool[0] = 1
-                self.__proc_bool[1] = 0
+            else:
+                self.__proc_bool[0] = 0
                 self.__proc_scalar[0] = 0.0
                 self.__proc_scalar[1] = 0.0
 
-        elif ep == 19:
+        elif ep == PROC_EP_DEF_TEMP:
             if self.__is_wrought == 1:
                 self.__proc_scalar[0] = DEF_TEMP_CANDIDATES[action_idx]
             else:
                 self.__proc_scalar[0] = 0.0
 
-        elif ep == 20:
+        elif ep == PROC_EP_DEF_STRAIN:
             if self.__is_wrought == 1:
                 self.__proc_scalar[1] = DEF_STRAIN_CANDIDATES[action_idx]
             else:
                 self.__proc_scalar[1] = 0.0
 
-        elif ep == 21:
+        elif ep == PROC_EP_HT1:
             if action_idx not in (0, 1):
                 raise ValueError(f"HT1 decision action must be 0 or 1, got {action_idx}")
             self.__ht1_decision = int(action_idx)
-            self.__proc_bool[2] = int(action_idx)
+            self.__proc_bool[1] = int(action_idx)
             if action_idx == 0:
                 self.__proc_scalar[2] = 0.0
                 self.__proc_scalar[3] = 0.0
-                self.__proc_bool[3:6] = 0.0
+                self.__proc_bool[2:5] = 0.0
                 self.__ht2_decision = 0
-                self.__proc_bool[6] = 0
+                self.__proc_bool[5] = 0
                 self.__proc_scalar[4] = 0.0
                 self.__proc_scalar[5] = 0.0
-                self.__proc_bool[7:9] = 0.0
+                self.__proc_bool[6:8] = 0.0
 
-        elif ep == 22:
+        elif ep == PROC_EP_HT1_TEMP:
             if self.__ht1_decision == 1:
                 self.__proc_scalar[2] = HT1_TEMP_CANDIDATES[action_idx]
             else:
                 self.__proc_scalar[2] = 0.0
 
-        elif ep == 23:
+        elif ep == PROC_EP_HT1_TIME:
             if self.__ht1_decision == 1:
                 self.__proc_scalar[3] = HT1_TIME_CANDIDATES[action_idx]
             else:
                 self.__proc_scalar[3] = 0.0
 
-        elif ep == 24:
+        elif ep == PROC_EP_HT1_COOL:
             if self.__ht1_decision == 1:
-                self.__proc_bool[3:6] = 0.0
-                self.__proc_bool[3 + action_idx] = 1.0
+                self.__proc_bool[2:5] = 0.0
+                self.__proc_bool[2 + action_idx] = 1.0
             else:
-                self.__proc_bool[3:6] = 0.0
+                self.__proc_bool[2:5] = 0.0
 
-        elif ep == 25:
+        elif ep == PROC_EP_HT2:
             if self.__ht1_decision == 1:
                 if action_idx not in (0, 1):
                     raise ValueError(f"HT2 decision action must be 0 or 1, got {action_idx}")
                 self.__ht2_decision = int(action_idx)
-                self.__proc_bool[6] = int(action_idx)
+                self.__proc_bool[5] = int(action_idx)
             else:
                 self.__ht2_decision = 0
-                self.__proc_bool[6] = 0
+                self.__proc_bool[5] = 0
             if self.__ht2_decision == 0:
                 self.__proc_scalar[4] = 0.0
                 self.__proc_scalar[5] = 0.0
-                self.__proc_bool[7:9] = 0.0
+                self.__proc_bool[6:8] = 0.0
 
-        elif ep == 26:
+        elif ep == PROC_EP_HT2_TEMP:
             if self.__ht1_decision == 1 and self.__ht2_decision == 1:
                 self.__proc_scalar[4] = HT2_TEMP_CANDIDATES[action_idx]
             else:
                 self.__proc_scalar[4] = 0.0
 
-        elif ep == 27:
+        elif ep == PROC_EP_HT2_TIME:
             if self.__ht1_decision == 1 and self.__ht2_decision == 1:
                 self.__proc_scalar[5] = HT2_TIME_CANDIDATES[action_idx]
             else:
                 self.__proc_scalar[5] = 0.0
 
-        elif ep == 28:
+        elif ep == PROC_EP_HT2_COOL:
             if self.__ht1_decision == 1 and self.__ht2_decision == 1:
-                self.__proc_bool[7:9] = 0.0
-                self.__proc_bool[7 + action_idx] = 1.0
+                self.__proc_bool[6:8] = 0.0
+                self.__proc_bool[6 + action_idx] = 1.0
             else:
-                self.__proc_bool[7:9] = 0.0
+                self.__proc_bool[6:8] = 0.0
 
     def repr(self):
         """Return model observation vector."""
@@ -215,11 +213,11 @@ class State:
             return True
         if ep < COMP_EPISODE_LEN:
             return False
-        if ep >= 21 and self.__ht1_decision == 0:
+        if ep >= PROC_EP_HT1 and self.__ht1_decision == 0:
             return True
-        if ep >= 25 and self.__ht2_decision == 0:
+        if ep >= PROC_EP_HT2 and self.__ht2_decision == 0:
             return True
-        return ep >= 28
+        return ep >= PROC_EP_HT2_COOL
 
     def get_action_idx_limits(self):
         if self.__episode_count < COMP_EPISODE_LEN - 1:
@@ -264,51 +262,51 @@ class State:
 
         next_ep = self.__episode_count + 1
         mask = np.zeros(max(COMP_ACTIONS_COUNT, MAX_PROC_ACTION_SPACE), dtype=bool)
-        if next_ep == 18:
+        if next_ep == PROC_EP_WROUGHT:
             mask[0:2] = True
-        elif next_ep == 19:
+        elif next_ep == PROC_EP_DEF_TEMP:
             if self.__is_wrought == 1:
                 mask[0:len(DEF_TEMP_CANDIDATES)] = True
             else:
                 mask[0] = True
-        elif next_ep == 20:
+        elif next_ep == PROC_EP_DEF_STRAIN:
             if self.__is_wrought == 1:
                 mask[0:len(DEF_STRAIN_CANDIDATES)] = True
             else:
                 mask[0] = True
-        elif next_ep == 21:
+        elif next_ep == PROC_EP_HT1:
             mask[0:2] = True
-        elif next_ep == 22:
+        elif next_ep == PROC_EP_HT1_TEMP:
             if self.__ht1_decision == 1:
                 mask[0:len(HT1_TEMP_CANDIDATES)] = True
             else:
                 mask[0] = True
-        elif next_ep == 23:
+        elif next_ep == PROC_EP_HT1_TIME:
             if self.__ht1_decision == 1:
                 mask[0:len(HT1_TIME_CANDIDATES)] = True
             else:
                 mask[0] = True
-        elif next_ep == 24:
+        elif next_ep == PROC_EP_HT1_COOL:
             if self.__ht1_decision == 1:
                 mask[0:3] = True
             else:
                 mask[0] = True
-        elif next_ep == 25:
+        elif next_ep == PROC_EP_HT2:
             if self.__ht1_decision == 1:
                 mask[0:2] = True
             else:
                 mask[0] = True
-        elif next_ep == 26:
+        elif next_ep == PROC_EP_HT2_TEMP:
             if self.__ht1_decision == 1 and self.__ht2_decision == 1:
                 mask[0:len(HT2_TEMP_CANDIDATES)] = True
             else:
                 mask[0] = True
-        elif next_ep == 27:
+        elif next_ep == PROC_EP_HT2_TIME:
             if self.__ht1_decision == 1 and self.__ht2_decision == 1:
                 mask[0:len(HT2_TIME_CANDIDATES)] = True
             else:
                 mask[0] = True
-        elif next_ep == 28:
+        elif next_ep == PROC_EP_HT2_COOL:
             if self.__ht1_decision == 1 and self.__ht2_decision == 1:
                 mask[0:2] = True
             else:
@@ -369,10 +367,87 @@ class Environment:
         raw_func, mo_scale = get_mo_ground_truth_func()
         self.raw_mo_func_with_proc = raw_func
         self.mo_scale = np.array(mo_scale, dtype=float)
-        self.mo_weights = np.ones(len(self.mo_scale), dtype=float) / float(len(self.mo_scale))
-        self.func_with_proc = lambda comp, proc_bool, proc_scalar, phase_scalar: float(
-            np.dot(self.raw_mo_func_with_proc(comp, proc_bool, proc_scalar, phase_scalar) / self.mo_scale, self.mo_weights)
+        self.objective_specs = [OBJECTIVE_SPECS[prop_name] for prop_name in PROP]
+        self.mo_weights = np.ones(len(self.objective_specs), dtype=float) / float(len(self.objective_specs))
+        self.func_with_proc = lambda comp, proc_bool, proc_scalar, phase_scalar: self._score_prediction(
+            self.raw_mo_func_with_proc(comp, proc_bool, proc_scalar, phase_scalar)
         )
+
+    def get_learning_conditions(self):
+        return {
+            'objective_specs': {
+                prop_name: {
+                    'mode': spec.mode,
+                    'lower': float(spec.lower),
+                    'upper': float(spec.upper),
+                    'scale': float(spec.scale),
+                }
+                for prop_name, spec in zip(PROP, self.objective_specs)
+            },
+            'mo_weights': np.asarray(self.mo_weights, dtype=float).copy(),
+        }
+
+    @staticmethod
+    def _objective_distance_reward(distance: float, scale: float) -> float:
+        safe_scale = max(float(scale), 1e-8)
+        return np.log1p(max(float(distance), 0.0) / safe_scale)
+
+    def _objective_reward(self, value: float, spec: ObjectiveSpec) -> float:
+        x = float(value)
+        lower = float(spec.lower)
+        upper = float(spec.upper)
+        scale = max(float(spec.scale), 1e-8)
+        mode = spec.mode
+
+        if mode == 'ignore':
+            return 0.0
+        if mode == 'maximize':
+            return self._objective_distance_reward(max(x, 0.0), scale)
+        if mode == 'minimize':
+            return -self._objective_distance_reward(max(x, 0.0), scale)
+        if mode == 'maximize_after':
+            if x >= lower:
+                return self._objective_distance_reward(x - lower, scale)
+            return -(lower - x)
+        if mode == 'minimize_before':
+            if x <= upper:
+                return self._objective_distance_reward(upper - x, scale)
+            return -(x - upper)
+        if mode == 'at_least':
+            return 0.0 if x >= lower else -(lower - x)
+        if mode == 'at_most':
+            return 0.0 if x <= upper else -(x - upper)
+        if mode == 'range':
+            if lower <= x <= upper:
+                return 0.0
+            if x < lower:
+                return -(lower - x)
+            return -(x - upper)
+        raise ValueError(f"Unsupported objective mode: {mode}")
+
+    def _objective_rewards(self, prop) -> np.ndarray:
+        arr = np.asarray(prop, dtype=float)
+        return np.array(
+            [self._objective_reward(arr[i], self.objective_specs[i]) for i in range(len(PROP))],
+            dtype=float,
+        )
+
+    def _score_prediction(self, prop) -> float:
+        objective_rewards = self._objective_rewards(prop)
+        reward = float(np.dot(objective_rewards, self.mo_weights))
+        reward -= self._constraint_penalty(prop)
+        return reward
+
+    def _score_from_components(self, prop, objective_rewards=None) -> float:
+        prop_arr = np.asarray(prop, dtype=float)
+        reward_vec = (
+            np.asarray(objective_rewards, dtype=float)
+            if objective_rewards is not None
+            else self._objective_rewards(prop_arr)
+        )
+        reward = float(np.dot(reward_vec, self.mo_weights))
+        reward -= self._constraint_penalty(prop_arr)
+        return reward
 
     @staticmethod
     def _is_valid_prop(prop) -> bool:
@@ -396,15 +471,16 @@ class Environment:
         return 10.0 * negative_penalty + 10.0 * ys_uts_penalty
 
     def _evaluate_design(self, comp, proc_bool, proc_scalar, phase):
-        """Predict properties and return (reward, prop, feasible)."""
+        """Predict properties and return (reward, prop, objective_rewards, feasible)."""
         prop = self.raw_mo_func_with_proc(comp, proc_bool, proc_scalar, phase)
         feasible = self._is_valid_prop(prop)
         if not feasible:
-            return 0.0, np.asarray(prop), False
+            return 0.0, np.asarray(prop), np.zeros(len(PROP), dtype=float), False
         prop_arr = np.asarray(prop, dtype=float)
-        reward = float(np.dot(prop_arr / self.mo_scale, self.mo_weights))
+        objective_rewards = self._objective_rewards(prop_arr)
+        reward = float(np.dot(objective_rewards, self.mo_weights))
         reward -= self._constraint_penalty(prop_arr)
-        return reward, np.asarray(prop), True
+        return reward, prop_arr, objective_rewards, True
 
     def set_mo_weights(self, weights):
         """Set normalized multi-objective weights."""
@@ -413,9 +489,21 @@ class Environment:
         if w.sum() <= 0:
             w = np.ones_like(w)
         self.mo_weights = w / w.sum()
-        self.func_with_proc = lambda comp, proc_bool, proc_scalar, phase_scalar: float(
-            np.dot(self.raw_mo_func_with_proc(comp, proc_bool, proc_scalar, phase_scalar) / self.mo_scale, self.mo_weights)
+        self.func_with_proc = lambda comp, proc_bool, proc_scalar, phase_scalar: self._score_prediction(
+            self.raw_mo_func_with_proc(comp, proc_bool, proc_scalar, phase_scalar)
         )
+        self._rescore_archive()
+
+    def _rescore_archive(self):
+        for item in self.top_results:
+            item['score'] = self._score_from_components(
+                item['prop'],
+                item.get('objective_rewards'),
+            )
+        self.top_results.sort(key=lambda item: item['score'], reverse=True)
+        if len(self.top_results) > self.top_k:
+            self.top_results = self.top_results[:self.top_k]
+        self._refresh_best_from_top()
 
     def update_mo_weights(self, method='improvement', window=20, eps=1e-6):
         """Update objective weights from recent improvement ranking."""
@@ -426,19 +514,22 @@ class Environment:
 
         vals = []
         for item in self.surrogate_buffer_list:
-            vals.append(self.raw_mo_func_with_proc(item['comp'], item['proc_bool'], item['proc_scalar'], item['phase']))
-        vals = np.array(vals)
+            if 'objective_rewards' in item:
+                vals.append(np.asarray(item['objective_rewards'], dtype=float))
+            else:
+                prop = self.raw_mo_func_with_proc(item['comp'], item['proc_bool'], item['proc_scalar'], item['phase'])
+                vals.append(self._objective_rewards(prop))
+        vals = np.array(vals, dtype=float)
 
         n = len(vals)
         k = max(1, min(window, n // 2))
         recent = vals[-k:]
         prev = vals[-2 * k:-k] if n >= 2 * k else vals[:k]
-        recent_mean = np.mean(recent / self.mo_scale, axis=0)
-        prev_mean = np.mean(prev / self.mo_scale, axis=0)
+        recent_mean = np.mean(recent, axis=0)
+        prev_mean = np.mean(prev, axis=0)
         imp = recent_mean - prev_mean
         rank = np.argsort(np.argsort(imp))
-        weight_list = [6, 5, 4, 3, 2, 1]
-        w = np.array([weight_list[r] for r in rank], dtype=float)
+        w = np.array([len(imp) - r for r in rank], dtype=float)
         self.set_mo_weights(w)
 
     def _normalize_and_constrain_composition(self, comp):
@@ -491,7 +582,7 @@ class Environment:
     def get_training_step(self):
         return int(self.training_step)
 
-    def _update_top_results(self, score, comp, proc_bool, proc_scalar, phase, prop):
+    def _update_top_results(self, score, comp, proc_bool, proc_scalar, phase, prop, objective_rewards):
         """Insert or update one design in top-k leaderboard."""
         design_key = State.encode_key(list(comp) + list(proc_bool) + list(proc_scalar) + list(phase))
         score = float(score)
@@ -502,6 +593,7 @@ class Environment:
             'phase': np.asarray(phase, dtype=np.float32).copy(),
         }
         prop_data = np.asarray(prop, dtype=float).copy()
+        objective_reward_data = np.asarray(objective_rewards, dtype=float).copy()
 
         existing_idx = None
         for i, item in enumerate(self.top_results):
@@ -513,22 +605,24 @@ class Environment:
             if score <= self.top_results[existing_idx]['score']:
                 self._refresh_best_from_top()
                 return
-            self._record_result_history(score, comp, proc_bool, proc_scalar, phase, prop)
+            self._record_result_history(score, comp, proc_bool, proc_scalar, phase, prop, objective_rewards)
             self.top_results[existing_idx] = {
                 'key': design_key,
                 'score': score,
                 'training_step': int(self.training_step),
                 'x': x_data,
                 'prop': prop_data,
+                'objective_rewards': objective_reward_data,
             }
         else:
-            self._record_result_history(score, comp, proc_bool, proc_scalar, phase, prop)
+            self._record_result_history(score, comp, proc_bool, proc_scalar, phase, prop, objective_rewards)
             self.top_results.append({
                 'key': design_key,
                 'score': score,
                 'training_step': int(self.training_step),
                 'x': x_data,
                 'prop': prop_data,
+                'objective_rewards': objective_reward_data,
             })
 
         self.top_results.sort(key=lambda item: item['score'], reverse=True)
@@ -536,7 +630,7 @@ class Environment:
             self.top_results = self.top_results[:self.top_k]
         self._refresh_best_from_top()
 
-    def _record_result_history(self, score, comp, proc_bool, proc_scalar, phase, prop):
+    def _record_result_history(self, score, comp, proc_bool, proc_scalar, phase, prop, objective_rewards):
         self.result_history.append({
             'key': State.encode_key(list(comp) + list(proc_bool) + list(proc_scalar) + list(phase)),
             'score': float(score),
@@ -548,6 +642,7 @@ class Environment:
                 'phase': np.asarray(phase, dtype=np.float32).copy(),
             },
             'prop': np.asarray(prop, dtype=float).copy(),
+            'objective_rewards': np.asarray(objective_rewards, dtype=float).copy(),
         })
 
     def init_surrogate(self, init_N, seed):
@@ -563,7 +658,7 @@ class Environment:
                 continue
 
             try:
-                score, prop, feasible = self._evaluate_design(comp, proc_bool, proc_scalar, phase)
+                score, prop, objective_rewards, feasible = self._evaluate_design(comp, proc_bool, proc_scalar, phase)
             except Exception:
                 continue
             if not feasible:
@@ -574,8 +669,9 @@ class Environment:
                 'proc_bool': proc_bool,
                 'proc_scalar': proc_scalar,
                 'phase': phase,
+                'objective_rewards': np.asarray(objective_rewards, dtype=float).copy(),
             })
-            self._update_top_results(score, comp, proc_bool, proc_scalar, phase, prop)
+            self._update_top_results(score, comp, proc_bool, proc_scalar, phase, prop, objective_rewards)
 
     def reset(self):
         """Reset to an empty decision state."""
@@ -602,8 +698,8 @@ class Environment:
         is_wrought = next_state.get_is_wrought()
         ht1_decision = next_state.get_ht1_decision()
         ht2_decision = next_state.get_ht2_decision()
-        ht1_cooling = proc_bool[3:6].tolist()
-        ht2_cooling = proc_bool[7:9].tolist()
+        ht1_cooling = proc_bool[2:5].tolist()
+        ht2_cooling = proc_bool[6:8].tolist()
         if ht1_decision == 0:
             ht1_cooling_display = "N/A"
         elif sum(ht1_cooling) == 0:
@@ -619,7 +715,7 @@ class Environment:
             ht2_cooling_display = ht2_cooling
         phase = calculate_phase_scalar(comp)
 
-        reward, prop, feasible = self._evaluate_design(comp, proc_bool, proc_scalar, phase)
+        reward, prop, objective_rewards, feasible = self._evaluate_design(comp, proc_bool, proc_scalar, phase)
         '''print(
             f"[step={next_state.get_episode_count()}] "
             f"comp={comp}; "
@@ -639,9 +735,10 @@ class Environment:
                     'proc_bool': proc_bool,
                     'proc_scalar': proc_scalar,
                     'phase': phase,
+                    'objective_rewards': np.asarray(objective_rewards, dtype=float).copy(),
                 })
 
-            self._update_top_results(reward, comp, proc_bool, proc_scalar, phase, prop)
+            self._update_top_results(reward, comp, proc_bool, proc_scalar, phase, prop, objective_rewards)
 
             try:
                 self.update_mo_weights(method='improvement', window=50)
@@ -674,6 +771,7 @@ class Environment:
                 'training_step': int(item.get('training_step', 0)),
                 'x': deepcopy(item['x']),
                 'prop': np.asarray(item['prop'], dtype=float).copy(),
+                'objective_rewards': np.asarray(item.get('objective_rewards', np.zeros(len(PROP))), dtype=float).copy(),
             })
         return out
 
@@ -685,6 +783,7 @@ class Environment:
                 'training_step': int(item.get('training_step', 0)),
                 'x': deepcopy(item['x']),
                 'prop': np.asarray(item['prop'], dtype=float).copy(),
+                'objective_rewards': np.asarray(item.get('objective_rewards', np.zeros(len(PROP))), dtype=float).copy(),
             })
         return out
 
@@ -703,6 +802,7 @@ class Environment:
                     'phase': np.asarray(item['x']['phase'], dtype=np.float32).copy(),
                 },
                 'prop': np.asarray(item['prop'], dtype=float).copy(),
+                'objective_rewards': np.asarray(item.get('objective_rewards', np.zeros(len(PROP))), dtype=float).copy(),
             })
 
         surrogate_buffer_list = []
@@ -712,6 +812,7 @@ class Environment:
                 'proc_bool': np.asarray(item['proc_bool'], dtype=np.float32).copy(),
                 'proc_scalar': np.asarray(item['proc_scalar'], dtype=np.float32).copy(),
                 'phase': np.asarray(item['phase'], dtype=np.float32).copy(),
+                'objective_rewards': np.asarray(item.get('objective_rewards', np.zeros(len(PROP))), dtype=float).copy(),
             })
 
         result_history = []
@@ -727,6 +828,7 @@ class Environment:
                     'phase': np.asarray(item['x']['phase'], dtype=np.float32).copy(),
                 },
                 'prop': np.asarray(item['prop'], dtype=float).copy(),
+                'objective_rewards': np.asarray(item.get('objective_rewards', np.zeros(len(PROP))), dtype=float).copy(),
             })
 
         return {
@@ -735,6 +837,7 @@ class Environment:
             'surrogate_buffer': sorted(self.surrogate_buffer),
             'surrogate_buffer_list': surrogate_buffer_list,
             'mo_weights': np.asarray(self.mo_weights, dtype=float).copy(),
+            'learning_conditions': self.get_learning_conditions(),
             'init_N': int(self.init_N),
             'training_step': int(self.training_step),
         }
@@ -754,6 +857,7 @@ class Environment:
                     'phase': np.asarray(item['x']['phase'], dtype=np.float32).copy(),
                 },
                 'prop': np.asarray(item['prop'], dtype=float).copy(),
+                'objective_rewards': np.asarray(item.get('objective_rewards', self._objective_rewards(item['prop'])), dtype=float).copy(),
             })
 
         self.surrogate_buffer = set(checkpoint_state.get('surrogate_buffer', []))
@@ -764,6 +868,7 @@ class Environment:
                 'proc_bool': np.asarray(item['proc_bool'], dtype=np.float32).copy(),
                 'proc_scalar': np.asarray(item['proc_scalar'], dtype=np.float32).copy(),
                 'phase': np.asarray(item['phase'], dtype=np.float32).copy(),
+                'objective_rewards': np.asarray(item.get('objective_rewards', np.zeros(len(PROP))), dtype=float).copy(),
             })
 
         self.result_history = []
@@ -779,10 +884,28 @@ class Environment:
                     'phase': np.asarray(item['x']['phase'], dtype=np.float32).copy(),
                 },
                 'prop': np.asarray(item['prop'], dtype=float).copy(),
+                'objective_rewards': np.asarray(item.get('objective_rewards', self._objective_rewards(item['prop'])), dtype=float).copy(),
             })
 
         self.init_N = int(checkpoint_state.get('init_N', self.init_N))
         self.training_step = int(checkpoint_state.get('training_step', self.training_step))
+        learning_conditions = checkpoint_state.get('learning_conditions')
+        if learning_conditions and 'objective_specs' in learning_conditions:
+            objective_specs = []
+            for prop_name in PROP:
+                spec_dict = learning_conditions['objective_specs'].get(prop_name)
+                if spec_dict is None:
+                    objective_specs.append(OBJECTIVE_SPECS[prop_name])
+                else:
+                    objective_specs.append(
+                        ObjectiveSpec(
+                            mode=spec_dict['mode'],
+                            lower=float(spec_dict['lower']),
+                            upper=float(spec_dict['upper']),
+                            scale=float(spec_dict['scale']),
+                        )
+                    )
+            self.objective_specs = objective_specs
         if 'mo_weights' in checkpoint_state:
             self.set_mo_weights(checkpoint_state['mo_weights'])
         self._refresh_best_from_top()

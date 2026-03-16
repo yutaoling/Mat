@@ -23,7 +23,7 @@ RL_CHECKPOINT_FREQ = 1000
 INIT_N = 20
 TOTAL_TIMESTEPS = 10_000
 BASE_SEED = 42
-RESUME_TRAINING = True
+RESUME_TRAINING = False
 RL_MODEL_PATH = f"models/rl/maskableppo_seed{BASE_SEED}.zip"
 RL_ENV_STATE_PATH = f"models/rl/maskableppo_seed{BASE_SEED}_env_state.pkl"
 BEST_REWARD_LOG_PATH = f"logs/rl/best_reward_seed{BASE_SEED}.txt"
@@ -38,12 +38,17 @@ torch.cuda.set_per_process_memory_fraction(0.95 / N_JOBS)
 RESULT_CSV_COLUMNS = [
     "rank", "reward", "train_step",
     "Ti", "Al", "V", "Cr", "Mn", "Fe", "Cu", "Zr", "Nb", "Mo", "Sn", "Hf", "Ta", "W", "Si", "C", "N", "O", "Sc",
-    "Is_Not_Wrought", "Is_Wrought",
+    "Is_Wrought",
     "Def_Temp", "Def_Strain",
     "HT1", "HT1_Temp", "HT1_Time", "HT1_Quench", "HT1_Air", "HT1_Furnace",
     "HT2", "HT2_Temp", "HT2_Time", "HT2_Quench", "HT2_Air",
     "Mo_eq", "Al_eq", "beta_transform_T",
     "YM", "YS", "UTS", "El", "HV",
+    "YM_objective_mode", "YM_objective_lower", "YM_objective_upper", "YM_objective_scale", "YM_weight",
+    "YS_objective_mode", "YS_objective_lower", "YS_objective_upper", "YS_objective_scale", "YS_weight",
+    "UTS_objective_mode", "UTS_objective_lower", "UTS_objective_upper", "UTS_objective_scale", "UTS_weight",
+    "El_objective_mode", "El_objective_lower", "El_objective_upper", "El_objective_scale", "El_weight",
+    "HV_objective_mode", "HV_objective_lower", "HV_objective_upper", "HV_objective_scale", "HV_weight",
 ]
 
 
@@ -188,18 +193,23 @@ def save_results_to_csv(env: Environment, seed: int, csv_filename=None, results=
     top_results = results if results is not None else env.get_top_results(k=10)
 
     rows = []
+    learning_conditions = env.get_learning_conditions()
+    objective_specs = learning_conditions["objective_specs"]
+    mo_weights = np.asarray(learning_conditions["mo_weights"], dtype=float)
     for rank, item in enumerate(top_results, start=1):
         best_x = item["x"]
         best_prop = item["prop"]
+        objective_rewards = np.asarray(item.get("objective_rewards", env._objective_rewards(best_prop)), dtype=float)
         comp = np.array(best_x["comp"])
         proc_bool = np.array(best_x["proc_bool"])
         proc_scalar = np.array(best_x["proc_scalar"])
         phase = np.array(best_x["phase"])
         comp_percent = comp * COMP_MULTIPLIER
+        current_reward = env._score_from_components(best_prop, objective_rewards)
 
         data_dict = {
             "rank": rank,
-            "reward": round(float(item["score"]), 6),
+            "reward": round(float(current_reward), 6),
             "train_step": int(item.get("training_step", 0)),
         }
 
@@ -220,6 +230,14 @@ def save_results_to_csv(env: Environment, seed: int, csv_filename=None, results=
 
         for i, phase_name in enumerate(PHASE_SCALAR):
             data_dict[phase_name] = round(phase[i], 2) if i < len(phase) else 0.0
+
+        for i, prop_name in enumerate(PROP):
+            spec = objective_specs[prop_name]
+            data_dict[f"{prop_name}_objective_mode"] = spec["mode"]
+            data_dict[f"{prop_name}_objective_lower"] = float(spec["lower"])
+            data_dict[f"{prop_name}_objective_upper"] = float(spec["upper"])
+            data_dict[f"{prop_name}_objective_scale"] = float(spec["scale"])
+            data_dict[f"{prop_name}_weight"] = round(float(mo_weights[i]), 6) if i < len(mo_weights) else None
 
         prop_array = np.array(best_prop) if isinstance(best_prop, (list, np.ndarray)) else best_prop
         for i, prop_name in enumerate(PROP):
@@ -338,17 +356,15 @@ if __name__ == "__main__":
     os.environ["RL_N_JOBS"] = str(int(max(1, N_JOBS)))
 
     base_seed = int(BASE_SEED) if BASE_SEED is not None else random.randint(0, 10000)
-    joblib.Parallel(n_jobs=int(max(1, N_JOBS)))(
-        joblib.delayed(rl_masked_ppo)(
-            init_N=INIT_N,
-            seed=base_seed + i * 1000,
-            total_timesteps=TOTAL_TIMESTEPS,
-            n_steps=PPO_N_STEPS,
-            batch_size=PPO_BATCH_SIZE,
-            checkpoint_freq=RL_CHECKPOINT_FREQ,
-            resume=RESUME_TRAINING,
-            model_path=RL_MODEL_PATH if int(max(1, N_JOBS)) == 1 else None,
-            env_state_path=RL_ENV_STATE_PATH if int(max(1, N_JOBS)) == 1 else None,
-            best_reward_log_path=BEST_REWARD_LOG_PATH if int(max(1, N_JOBS)) == 1 else None,
-        ) for i in range(int(max(1, N_JOBS)))
+    rl_masked_ppo(
+        init_N=INIT_N,
+        seed=base_seed,
+        total_timesteps=TOTAL_TIMESTEPS,
+        n_steps=PPO_N_STEPS,
+        batch_size=PPO_BATCH_SIZE,
+        checkpoint_freq=RL_CHECKPOINT_FREQ,
+        resume=RESUME_TRAINING,
+        model_path=RL_MODEL_PATH,
+        env_state_path=RL_ENV_STATE_PATH,
+        best_reward_log_path=BEST_REWARD_LOG_PATH,
     )

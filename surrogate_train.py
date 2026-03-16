@@ -185,8 +185,10 @@ class CustomDataset(Dataset):
         if self.augment:
             noise_comp = np.random.normal(0,self.noise_std,_comp.shape)
             _comp += noise_comp
-            noise_proc = np.random.normal(0, self.noise_std, _proc_scalar.shape)
-            _proc_scalar += noise_proc * _proc_scalar_mask
+            noise_proc_bool = np.random.normal(0, self.noise_std, _proc_bool.shape)
+            _proc_bool += noise_proc_bool * _proc_bool_mask
+            noise_proc_scalar = np.random.normal(0, self.noise_std, _proc_scalar.shape)
+            _proc_scalar += noise_proc_scalar * _proc_scalar_mask
             noise_phase = np.random.normal(0, self.noise_std, _phase_scalar.shape)
             _phase_scalar += noise_phase
 
@@ -259,7 +261,7 @@ def _get_cached_tensors(dtype, device, prop_scaler):
         }
     return _cached_loss_tensors[key]
 
-def MaskedLoss(out, prop, mask, prop_scaler=None):
+def MaskedLoss(out, prop, mask, prop_scaler=None, is_training=True):
     cached = _get_cached_tensors(out.dtype, out.device, prop_scaler)
     scaler_mean = cached['scaler_mean']
     scaler_scale = cached['scaler_scale']
@@ -271,23 +273,25 @@ def MaskedLoss(out, prop, mask, prop_scaler=None):
 
     out_original = out * scaler_scale + scaler_mean
     constraint_positive = nn.functional.relu(-out_original) * mask * weights
-
-    per_label_total = per_label_loss + 10.0 * constraint_positive
+    if is_training:
+        per_label_loss = per_label_loss + 10.0 * constraint_positive
 
     denom_labels = (mask * weights).sum().clamp(min=1e-6)
-    loss_main = per_label_total.sum() / denom_labels
+    loss_main = per_label_loss.sum() / denom_labels
 
     pair_mask = (mask[:, 1] * mask[:, 2]).clamp(min=0.0, max=1.0)
-    constraint_uts_ys = nn.functional.relu(out_original[:, 1] - out_original[:, 2]) * pair_mask
-    denom_pairs = pair_mask.sum().clamp(min=1e-6)
-    loss_pair = constraint_uts_ys.sum() / denom_pairs
-
-    total = loss_main + 10.0 * loss_pair
+    if is_training:
+        constraint_uts_ys = nn.functional.relu(out_original[:, 1] - out_original[:, 2]) * pair_mask
+        denom_pairs = pair_mask.sum().clamp(min=1e-6)
+        loss_pair = constraint_uts_ys.sum() / denom_pairs
+        loss_main = loss_main + 10.0 * loss_pair
 
     per_sample_denom = (mask * weights).sum(dim=1).clamp(min=1e-6)
-    per_sample = per_label_total.sum(dim=1) / per_sample_denom + 10.0 * constraint_uts_ys
+    per_sample = per_label_loss.sum(dim=1) / per_sample_denom
+    if is_training:
+        per_sample = per_sample + 10.0 * constraint_uts_ys
 
-    return total, per_sample
+    return loss_main, per_sample
 
 
 def train_validate_split(
@@ -345,7 +349,7 @@ def validate(model, val_dl, scalers=None, prop_scaler=None):
             out = model(comp, elem_feat, proc_bool, proc_scalar, phase_scalar, proc_bool_mask, proc_scalar_mask, scalers)
         prop = prop.reshape(*(out.shape))
         prop_mask = prop_mask.reshape(*(out.shape))
-        loss, llist = MaskedLoss(out, prop, prop_mask, prop_scaler)
+        loss, llist = MaskedLoss(out, prop, prop_mask, prop_scaler, is_training=False)
         total_loss += loss.item() * len(prop)
         total_samples += len(prop)
         all_llist.append(llist)
@@ -409,7 +413,7 @@ def train_a_model(model = None,
         _batch_loss_buffer = []
         for id, comp, proc_bool, proc_scalar, phase_scalar, prop, elem_feat, proc_bool_mask, proc_scalar_mask, prop_mask in train_dl:
             out = model(comp, elem_feat, proc_bool, proc_scalar, phase_scalar, proc_bool_mask, proc_scalar_mask, scalers)
-            loss, llist = MaskedLoss(out, prop.reshape(*(out.shape)), prop_mask.reshape(*(out.shape)), prop_scaler)
+            loss, llist = MaskedLoss(out, prop.reshape(*(out.shape)), prop_mask.reshape(*(out.shape)), prop_scaler, is_training=True)
 
             model.optimizer.zero_grad()
             loss.backward(retain_graph=True)
@@ -481,14 +485,14 @@ def get_model(model = None,
             val_d = val_d,
             scalers = scalers,
             save_path=save_path,
-            batch_size=16,
+            batch_size=128,
             num_training_epochs=1000)
         torch.save(model.state_dict(), model_path)
     
     return model, train_d, val_d, scalers
 
 if __name__ == '__main__':
-    mask_modes = ['zero', 'learned', 'mean_dropout', 'sample_dropout']
+    mask_modes = ['zero', 'learned']
     for mask_mode in mask_modes:
         for model in MODEL_LIST(mask_mode = mask_mode):
             model_name = model.get_name()

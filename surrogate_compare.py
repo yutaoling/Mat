@@ -65,7 +65,7 @@ def surrogate_compare():
     index = 0
     
     train_d, val_d, scalers = joblib.load('models/surrogate/data.pth')
-    mask_modes = ['zero', 'learned', 'mean_dropout', 'sample_dropout']
+    mask_modes = ['zero', 'learned']
     for mask_mode in mask_modes:
         for model in MODEL_LIST(mask_mode = mask_mode):
             results, index = compare(model, val_d, results, index, scalers)

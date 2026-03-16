@@ -1,11 +1,13 @@
 ﻿import warnings
 from collections import namedtuple
+from dataclasses import dataclass
+from math import inf
 
 import numpy as np
 import torch
 
 from surrogate_train import get_model, device
-from surrogate_model import Final, N_PROC_BOOL, N_PROC_SCALAR, N_PHASE_SCALAR
+from surrogate_model import Final, N_PROC_BOOL, N_PROC_SCALAR, N_PHASE_SCALAR, PROP
 
 COMPOSITION_INTERVAL = 0.001
 COMPOSITION_ROUNDUP_DIGITS = 3
@@ -16,46 +18,36 @@ Transition = namedtuple('Transition', ('current_state', 'action', 'delayed_rewar
 TrainingIndicator = namedtuple('TrainingIndicator', ('epoch', 'loss', 'total_q'))
 CompositionLimit = namedtuple('CompositionLimit', ('min_bound', 'max_bound'))
 
+
+@dataclass(frozen=True)
+class ObjectiveSpec:
+    mode: str
+    lower: float = 0.0
+    upper: float = inf
+    scale: float = 1.0
+
 TI_MIN, TI_MAX = 0.6, 1.0
 AL_MIN, AL_MAX = 0.0, 0.1
 V_MIN, V_MAX = 0.0, 0.1
-CR_MIN, CR_MAX = 0.0, 0.15
-MN_MIN, MN_MAX = 0.0, 0.0
-FE_MIN, FE_MAX = 0.0, 0.1
-CU_MIN, CU_MAX = 0.0, 0.0
-ZR_MIN, ZR_MAX = 0.0, 0.50
-NB_MIN, NB_MAX = 0.0, 0.35
-MO_MIN, MO_MAX = 0.0, 0.20
-SN_MIN, SN_MAX = 0.0, 0.15
-HF_MIN, HF_MAX = 0.0, 0.0
-TA_MIN, TA_MAX = 0.0, 0.5
-W_MIN, W_MAX = 0.0, 0.0
-SI_MIN, SI_MAX = 0.0, 0.0
-C_MIN, C_MAX = 0.0, 0.0
-N_MIN, N_MAX = 0.0, 0.0
-O_MIN, O_MAX = 0.0, 0.0
-SC_MIN, SC_MAX = 0.0, 0.0
+CR_MIN, CR_MAX = 0.0, 0.1
+FE_MIN, FE_MAX = 0.0, 0.08
+ZR_MIN, ZR_MAX = 0.0, 0.3
+NB_MIN, NB_MAX = 0.0, 0.4
+MO_MIN, MO_MAX = 0.0, 0.15
+SN_MIN, SN_MAX = 0.0, 0.1
+TA_MIN, TA_MAX = 0.0, 0.3
 
 COMP_LIMITS = (
     CompositionLimit(TI_MIN, TI_MAX),
     CompositionLimit(AL_MIN, AL_MAX),
     CompositionLimit(V_MIN, V_MAX),
     CompositionLimit(CR_MIN, CR_MAX),
-    CompositionLimit(MN_MIN, MN_MAX),
     CompositionLimit(FE_MIN, FE_MAX),
-    CompositionLimit(CU_MIN, CU_MAX),
     CompositionLimit(ZR_MIN, ZR_MAX),
     CompositionLimit(NB_MIN, NB_MAX),
     CompositionLimit(MO_MIN, MO_MAX),
     CompositionLimit(SN_MIN, SN_MAX),
-    CompositionLimit(HF_MIN, HF_MAX),
     CompositionLimit(TA_MIN, TA_MAX),
-    CompositionLimit(W_MIN, W_MAX),
-    CompositionLimit(SI_MIN, SI_MAX),
-    CompositionLimit(C_MIN, C_MAX),
-    CompositionLimit(N_MIN, N_MAX),
-    CompositionLimit(O_MIN, O_MAX),
-    CompositionLimit(SC_MIN, SC_MAX),
 )
 
 COMP_MIN_LIMITS = list(CompositionLimit(*zip(*COMP_LIMITS)).min_bound)
@@ -83,7 +75,18 @@ COMP_MAX_LIMITS = NEW_COMP_MAX_LIMITS
 COMP_MULTIPLIER = 100.0
 ELEM_N = len(COMP_LIMITS)
 COMP_EPISODE_LEN = ELEM_N - 1
-MAX_EPISODE_LEN = 29
+PROC_EP_WROUGHT = COMP_EPISODE_LEN
+PROC_EP_DEF_TEMP = PROC_EP_WROUGHT + 1
+PROC_EP_DEF_STRAIN = PROC_EP_WROUGHT + 2
+PROC_EP_HT1 = PROC_EP_WROUGHT + 3
+PROC_EP_HT1_TEMP = PROC_EP_WROUGHT + 4
+PROC_EP_HT1_TIME = PROC_EP_WROUGHT + 5
+PROC_EP_HT1_COOL = PROC_EP_WROUGHT + 6
+PROC_EP_HT2 = PROC_EP_WROUGHT + 7
+PROC_EP_HT2_TEMP = PROC_EP_WROUGHT + 8
+PROC_EP_HT2_TIME = PROC_EP_WROUGHT + 9
+PROC_EP_HT2_COOL = PROC_EP_WROUGHT + 10
+MAX_EPISODE_LEN = PROC_EP_HT2_COOL + 1
 
 EPSILON_START = 0.9
 EPSILON_DECAY_COEF = 10000
@@ -167,35 +170,28 @@ def calculate_phase_scalar(composition):
     comp = np.array(composition) * 100.0
 
     mo_eq = (
-        1.0 * comp[9]
+        1.0 * comp[7]
         + 0.67 * comp[2]
-        + 0.44 * comp[13]
-        + 0.28 * comp[8]
-        + 0.22 * comp[12]
-        + 2.9 * comp[5]
+        + 0.28 * comp[6]
+        + 0.22 * comp[9]
         + 1.6 * comp[3]
-        + 1.7 * comp[4]
         - 1.0 * comp[1]
-    )
+    ) 
 
     al_eq = (
         1.0 * comp[1]
-        + comp[7] / 6.0
-        + comp[10] / 3.0
-        + 10.0 * (comp[17] + comp[16])
+        + comp[5] / 6.0
+        + comp[8] / 3.0
     )
 
     beta_transform_T = (
         882.0
         + 2.1 * comp[1]
-        - 9.5 * comp[9]
-        + 4.2 * comp[10]
-        - 6.9 * comp[7]
+        - 9.5 * comp[7]
+        + 4.2 * comp[8]
+        - 6.9 * comp[5]
         - 11.8 * comp[2]
         - 12.1 * comp[3]
-        - 15.4 * comp[5]
-        + 23.3 * comp[14]
-        + 123.0 * comp[17]
     )
 
     return np.array([mo_eq, al_eq, beta_transform_T], dtype=np.float32)
@@ -214,6 +210,15 @@ def get_mo_ground_truth_func():
         return np.array(_func(comp, proc_bool, proc_scalar, phase_scalar))
 
     return _mo_raw_func, _mo_scale
+
+
+OBJECTIVE_SPECS = {
+    'YM': ObjectiveSpec(mode='maximize_after', lower=120.0, upper=inf, scale=70.0),
+    'YS': ObjectiveSpec(mode='at_least', lower=1400.0, upper=inf, scale=813.0),
+    'UTS': ObjectiveSpec(mode='at_least', lower=1600.0, upper=inf, scale=932.0),
+    'El': ObjectiveSpec(mode='ignore', lower=0.0, upper=inf, scale=13.5),
+    'HV': ObjectiveSpec(mode='ignore', lower=0.0, upper=inf, scale=273.0),
+}
 
 
 DEF_TEMP_CANDIDATES = np.array([
