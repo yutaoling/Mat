@@ -494,6 +494,7 @@ def get_model(model = None,
 if __name__ == '__main__':
     mask_modes = ['zero', 'learned']
     for mask_mode in mask_modes:
+        break
         for model in MODEL_LIST(mask_mode = mask_mode):
             model_name = model.get_name()
             print(f"\nTraining model: {model_name}\n")
@@ -510,6 +511,7 @@ if __name__ == '__main__':
                 save_path=f'{log_dir}/train_{model_name}.txt')
     
     for connect_mode in ['jump', 'emb', 'sep', 'sep_all']:
+        break
         model = Fusion(connect_mode=connect_mode).to(device)
         model_name = model.get_name()
         print(f"\nTraining model: {model_name}\n")
@@ -535,17 +537,18 @@ if __name__ == '__main__':
                         target = [_ym, _ys, _uts, _el, _hv]
                         for Pr in [True, False]:
                             for Ph in [True, False]:
-                                model = Share(target, Pr, Ph).to(device)
-                                model_name = model.get_name()
-                                print(f"\nTraining model: {model_name}\n")
-                                model_dir = f'models/surrogate'
-                                log_dir = f'logs/surrogate'
-                                os.makedirs(model_dir, exist_ok=True)
-                                os.makedirs(log_dir, exist_ok=True)
+                                for n_hl in [3]:
+                                    model = Share(target, n_hl, Pr, Ph).to(device)
+                                    model_name = model.get_name()
+                                    print(f"\nTraining model: {model_name}\n")
+                                    model_dir = f'models/surrogate'
+                                    log_dir = f'logs/surrogate'
+                                    os.makedirs(model_dir, exist_ok=True)
+                                    os.makedirs(log_dir, exist_ok=True)
 
-                                get_model(model,
-                                    f'{model_dir}/model_{model_name}.pth',
-                                    f'{model_dir}/data.pth',
-                                    resume=False,
-                                    train=True,
-                                    save_path=f'{log_dir}/train_{model_name}.txt')
+                                    get_model(model,
+                                        f'{model_dir}/model_{model_name}.pth',
+                                        f'{model_dir}/data.pth',
+                                        resume=False,
+                                        train=True,
+                                        save_path=f'{log_dir}/train_{model_name}.txt')

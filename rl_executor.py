@@ -44,11 +44,11 @@ RESULT_CSV_COLUMNS = [
     "HT2", "HT2_Temp", "HT2_Time", "HT2_Quench", "HT2_Air",
     "Mo_eq", "Al_eq", "beta_transform_T",
     "YM", "YS", "UTS", "El", "HV",
-    "YM_objective_mode", "YM_objective_lower", "YM_objective_upper", "YM_objective_scale", "YM_weight",
-    "YS_objective_mode", "YS_objective_lower", "YS_objective_upper", "YS_objective_scale", "YS_weight",
-    "UTS_objective_mode", "UTS_objective_lower", "UTS_objective_upper", "UTS_objective_scale", "UTS_weight",
-    "El_objective_mode", "El_objective_lower", "El_objective_upper", "El_objective_scale", "El_weight",
-    "HV_objective_mode", "HV_objective_lower", "HV_objective_upper", "HV_objective_scale", "HV_weight",
+    "YM_objective_trend", "YM_objective_lower", "YM_objective_upper", "YM_objective_scale", "YM_weight",
+    "YS_objective_trend", "YS_objective_lower", "YS_objective_upper", "YS_objective_scale", "YS_weight",
+    "UTS_objective_trend", "UTS_objective_lower", "UTS_objective_upper", "UTS_objective_scale", "UTS_weight",
+    "El_objective_trend", "El_objective_lower", "El_objective_upper", "El_objective_scale", "El_weight",
+    "HV_objective_trend", "HV_objective_lower", "HV_objective_upper", "HV_objective_scale", "HV_weight",
 ]
 
 
@@ -191,6 +191,10 @@ class RLCheckpointCallback(BaseCallback):
 def save_results_to_csv(env: Environment, seed: int, csv_filename=None, results=None):
     """Save top-10 designs and predicted properties to CSV."""
     top_results = results if results is not None else env.get_top_results(k=10)
+    top_results = [
+        item for item in top_results
+        if float(item.get("score", float("-inf"))) >= 0.0
+    ]
 
     rows = []
     learning_conditions = env.get_learning_conditions()
@@ -233,7 +237,7 @@ def save_results_to_csv(env: Environment, seed: int, csv_filename=None, results=
 
         for i, prop_name in enumerate(PROP):
             spec = objective_specs[prop_name]
-            data_dict[f"{prop_name}_objective_mode"] = spec["mode"]
+            data_dict[f"{prop_name}_objective_trend"] = spec["trend"]
             data_dict[f"{prop_name}_objective_lower"] = float(spec["lower"])
             data_dict[f"{prop_name}_objective_upper"] = float(spec["upper"])
             data_dict[f"{prop_name}_objective_scale"] = float(spec["scale"])

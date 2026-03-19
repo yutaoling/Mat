@@ -71,7 +71,7 @@ def surrogate_compare():
             results, index = compare(model, val_d, results, index, scalers)
     for connect_mode in ['jump', 'emb', 'sep', 'sep_all']:
         model = Fusion(connect_mode=connect_mode).to(device)
-        results, index = compare(model, val_d, results, index, scalers)
+        # results, index = compare(model, val_d, results, index, scalers)
     for _ym in [0, 1]:
         for _ys in [0, 1]:
             for _uts in [0, 1]:
@@ -82,10 +82,11 @@ def surrogate_compare():
                         target = [_ym, _ys, _uts, _el, _hv]
                         for Pr in [True, False]:
                             for Ph in [True, False]:
-                                model = Share(target, Pr, Ph).to(device)
-                                results, index = compare(model, val_d, results, index, scalers)
+                                for n_hl in [1, 2, 3]:
+                                    model = Share(target, n_hl, Pr, Ph).to(device)
+                                    # results, index = compare(model, val_d, results, index, scalers)
     model = Final().to(device)
-    results, index = compare(model, val_d, results, index, scalers)
+    # results, index = compare(model, val_d, results, index, scalers)
     results.to_excel(f'results/surrogate_comparison.xlsx', index=False)
     
 if __name__ == "__main__":

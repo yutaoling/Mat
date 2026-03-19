@@ -780,9 +780,10 @@ class Fusion(nn.Module):
         return f"Fusion_{self.connect_mode}"
 
 class Share(nn.Module):
-    def __init__(self, target = [1, 1, 1, 1, 1], Pr = True, Ph = True):
+    def __init__(self, target = [1, 1, 1, 1, 1], n_hidden_layers = 1, Pr = True, Ph = True):
         super(Share, self).__init__()
         self.target = target
+        self.n_hidden_layers = n_hidden_layers
         self.Pr = Pr
         self.Ph = Ph
         self._n_in_dnn = N_ELEM
@@ -790,7 +791,27 @@ class Share(nn.Module):
             self._n_in_dnn += N_PROC_BOOL + N_PROC_SCALAR
         if self.Ph:
             self._n_in_dnn += N_PHASE_SCALAR
-        self.fc = nn.Linear(self._n_in_dnn, N_FC_NERON)
+        if self.n_hidden_layers == 1:
+            self.fc = nn.Sequential(
+                nn.Linear(self._n_in_dnn, N_FC_NERON),
+                nn.LeakyReLU(LEAKY_RATE)
+            )
+        elif self.n_hidden_layers ==2:
+            self.fc = nn.Sequential(
+                nn.Linear(self._n_in_dnn, N_FC_NERON),
+                nn.LeakyReLU(LEAKY_RATE),
+                nn.Linear(N_FC_NERON, N_FC_NERON),
+                nn.LeakyReLU(LEAKY_RATE)
+            )
+        elif self.n_hidden_layers ==3:
+            self.fc = nn.Sequential(
+                nn.Linear(self._n_in_dnn, N_FC_NERON),
+                nn.LeakyReLU(LEAKY_RATE),
+                nn.Linear(N_FC_NERON, N_FC_NERON),
+                nn.LeakyReLU(LEAKY_RATE),
+                nn.Linear(N_FC_NERON, N_FC_NERON),
+                nn.LeakyReLU(LEAKY_RATE)
+            )
         self.out = nn.Linear(N_FC_NERON, sum(self.target))
         self.af = nn.LeakyReLU(LEAKY_RATE)
         self.learned_mask = LearnedMaskedProc()
@@ -799,8 +820,10 @@ class Share(nn.Module):
         self.optimizer = optim.Adam(self.parameters(), lr=self.lr, weight_decay=1e-4)
     
     def reset_parameters(self):
-        self.fc.weight.data.uniform_(*hidden_init(self.fc))
-        self.out.weight.data.uniform_(*hidden_init(self.out))
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                init.xavier_uniform_(m.weight)
+                if m.bias is not None: m.bias.data.zero_()
     def forward(self, comp, elem_feat, proc_bool, proc_scalar, phase_scalar, proc_bool_mask, proc_scalar_mask, scalers = None):
         batch_size = comp.size(0)
         proc_bool = proc_bool.reshape(batch_size, -1)
@@ -814,7 +837,7 @@ class Share(nn.Module):
             x = torch.cat([x, proc_bool.reshape(-1, N_PROC_BOOL), proc_scalar.reshape(-1, N_PROC_SCALAR)], dim=-1)
         if self.Ph:
             x = torch.cat([x, phase_scalar.reshape(-1, N_PHASE_SCALAR)], dim=-1)
-        x = self.af(self.fc(x))
+        x = self.fc(x)
         x = self.out(x)
         out = torch.zeros(batch_size, N_PROP, device=device)
         for i, t in enumerate(self.target):
@@ -824,7 +847,7 @@ class Share(nn.Module):
         return out
 
     def get_name(self):
-        name = f"Share_{''.join(str(t) for t in self.target)}"
+        name = f"Share_{''.join(str(t) for t in self.target)}_{self.n_hidden_layers}"
         if self.Pr:
             name += "_Pr"
         if self.Ph:
@@ -835,15 +858,15 @@ class Final(nn.Module):
     def __init__(self):
         super(Final, self).__init__()
         self.model_dir = f'models/surrogate'
-        self.model_ym = Share(target=[1, 0, 0, 1, 0], Pr=True, Ph=True).to(device)
+        self.model_ym = Share(target=[1, 0, 0, 0, 1], n_hidden_layers=3, Pr=True, Ph=False).to(device)
         self.model_ym.load_state_dict(torch.load(f'{self.model_dir}/model_{self.model_ym.get_name()}.pth', map_location=device))
-        self.model_ys = Share(target=[1, 1, 1, 1, 1], Pr=False, Ph=True).to(device)
+        self.model_ys = Share(target=[1, 1, 1, 1, 1], n_hidden_layers=3, Pr=True, Ph=False).to(device)
         self.model_ys.load_state_dict(torch.load(f'{self.model_dir}/model_{self.model_ys.get_name()}.pth', map_location=device))
-        self.model_uts = Share(target=[1, 1, 1, 1, 1], Pr=False, Ph=True).to(device)
+        self.model_uts = Share(target=[1, 1, 1, 1, 1], n_hidden_layers=3, Pr=True, Ph=False).to(device)
         self.model_uts.load_state_dict(torch.load(f'{self.model_dir}/model_{self.model_uts.get_name()}.pth', map_location=device))
-        self.model_el = Share(target=[1, 0, 0, 1, 0], Pr=True, Ph=True).to(device)
+        self.model_el = Share(target=[1, 0, 0, 1, 1], n_hidden_layers=3, Pr=True, Ph=True).to(device)
         self.model_el.load_state_dict(torch.load(f'{self.model_dir}/model_{self.model_el.get_name()}.pth', map_location=device))
-        self.model_hv = Share(target=[0, 0, 0, 1, 1], Pr=False, Ph=False).to(device)
+        self.model_hv = Share(target=[1, 0, 0, 1, 1], n_hidden_layers=3, Pr=True, Ph=True).to(device)
         self.model_hv.load_state_dict(torch.load(f'{self.model_dir}/model_{self.model_hv.get_name()}.pth', map_location=device))
 
     def forward(self, comp, elem_feat, proc_bool, proc_scalar, phase_scalar, proc_bool_mask, proc_scalar_mask, scalers = None):
@@ -914,8 +937,9 @@ if __name__ == '__main__':
                         target = [_ym, _ys, _uts, _el, _hv]
                         for Pr in [True, False]:
                             for Ph in [True, False]:
-                                model = Share(target, Pr, Ph).to(device)
-                                print(f"{model.get_name()} {list(model(*test_input).size())}")
+                                for n_hl in [1, 2, 3]:
+                                    model = Share(target, n_hl, Pr, Ph).to(device)
+                                    print(f"{model.get_name()} {list(model(*test_input).size())}")
     model = Final().to(device)
     torch.save(model.state_dict(), f'models/surrogate/model_{model.get_name()}.pth')
     print(f"{model.get_name()} {list(model(*test_input).size())}")

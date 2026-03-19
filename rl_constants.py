@@ -21,7 +21,7 @@ CompositionLimit = namedtuple('CompositionLimit', ('min_bound', 'max_bound'))
 
 @dataclass(frozen=True)
 class ObjectiveSpec:
-    mode: str
+    trend: str
     lower: float = 0.0
     upper: float = inf
     scale: float = 1.0
@@ -213,11 +213,11 @@ def get_mo_ground_truth_func():
 
 
 OBJECTIVE_SPECS = {
-    'YM': ObjectiveSpec(mode='maximize_after', lower=120.0, upper=inf, scale=70.0),
-    'YS': ObjectiveSpec(mode='at_least', lower=1400.0, upper=inf, scale=813.0),
-    'UTS': ObjectiveSpec(mode='at_least', lower=1600.0, upper=inf, scale=932.0),
-    'El': ObjectiveSpec(mode='ignore', lower=0.0, upper=inf, scale=13.5),
-    'HV': ObjectiveSpec(mode='ignore', lower=0.0, upper=inf, scale=273.0),
+    'YM': ObjectiveSpec(trend='maximize', lower=120.0, upper=inf, scale=70.0),
+    'YS': ObjectiveSpec(trend='neutral', lower=1400.0, upper=inf, scale=813.0),
+    'UTS': ObjectiveSpec(trend='neutral', lower=1600.0, upper=inf, scale=932.0),
+    'El': ObjectiveSpec(trend='neutral', lower=0.0, upper=inf, scale=13.5),
+    'HV': ObjectiveSpec(trend='neutral', lower=0.0, upper=inf, scale=273.0),
 }
 
 

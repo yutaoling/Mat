@@ -377,7 +377,7 @@ class Environment:
         return {
             'objective_specs': {
                 prop_name: {
-                    'mode': spec.mode,
+                    'trend': spec.trend,
                     'lower': float(spec.lower),
                     'upper': float(spec.upper),
                     'scale': float(spec.scale),
@@ -387,43 +387,27 @@ class Environment:
             'mo_weights': np.asarray(self.mo_weights, dtype=float).copy(),
         }
 
-    @staticmethod
-    def _objective_distance_reward(distance: float, scale: float) -> float:
-        safe_scale = max(float(scale), 1e-8)
-        return np.log1p(max(float(distance), 0.0) / safe_scale)
-
     def _objective_reward(self, value: float, spec: ObjectiveSpec) -> float:
         x = float(value)
         lower = float(spec.lower)
         upper = float(spec.upper)
+        trend = spec.trend
         scale = max(float(spec.scale), 1e-8)
-        mode = spec.mode
+        underflow = max(lower - x, 0.0)
+        overflow = 0.0 if not np.isfinite(upper) else max(x - upper, 0.0)
 
-        if mode == 'ignore':
+        if underflow > 0.0 or overflow > 0.0:
+            return -(underflow + overflow)
+
+        if trend == 'neutral':
             return 0.0
-        if mode == 'maximize':
-            return self._objective_distance_reward(max(x, 0.0), scale)
-        if mode == 'minimize':
-            return -self._objective_distance_reward(max(x, 0.0), scale)
-        if mode == 'maximize_after':
-            if x >= lower:
-                return self._objective_distance_reward(x - lower, scale)
-            return -(lower - x)
-        if mode == 'minimize_before':
-            if x <= upper:
-                return self._objective_distance_reward(upper - x, scale)
-            return -(x - upper)
-        if mode == 'at_least':
-            return 0.0 if x >= lower else -(lower - x)
-        if mode == 'at_most':
-            return 0.0 if x <= upper else -(x - upper)
-        if mode == 'range':
-            if lower <= x <= upper:
-                return 0.0
-            if x < lower:
-                return -(lower - x)
-            return -(x - upper)
-        raise ValueError(f"Unsupported objective mode: {mode}")
+        if trend == 'maximize':
+            return max(x - lower, 0.0) / scale
+        if trend == 'minimize':
+            if not np.isfinite(upper):
+                raise ValueError("Objective trend 'minimize' requires a finite upper bound.")
+            return max(upper - x, 0.0) / scale
+        raise ValueError(f"Unsupported objective trend: {trend}")
 
     def _objective_rewards(self, prop) -> np.ndarray:
         arr = np.asarray(prop, dtype=float)
@@ -495,11 +479,17 @@ class Environment:
         self._rescore_archive()
 
     def _rescore_archive(self):
+        rescored = []
         for item in self.top_results:
-            item['score'] = self._score_from_components(
+            score = self._score_from_components(
                 item['prop'],
                 item.get('objective_rewards'),
             )
+            if score < 0.0:
+                continue
+            item['score'] = score
+            rescored.append(item)
+        self.top_results = rescored
         self.top_results.sort(key=lambda item: item['score'], reverse=True)
         if len(self.top_results) > self.top_k:
             self.top_results = self.top_results[:self.top_k]
@@ -586,6 +576,9 @@ class Environment:
         """Insert or update one design in top-k leaderboard."""
         design_key = State.encode_key(list(comp) + list(proc_bool) + list(proc_scalar) + list(phase))
         score = float(score)
+        if score < 0.0:
+            self._refresh_best_from_top()
+            return
         x_data = {
             'comp': list(comp),
             'proc_bool': np.asarray(proc_bool, dtype=np.float32).copy(),
@@ -631,9 +624,12 @@ class Environment:
         self._refresh_best_from_top()
 
     def _record_result_history(self, score, comp, proc_bool, proc_scalar, phase, prop, objective_rewards):
+        score = float(score)
+        if score < 0.0:
+            return
         self.result_history.append({
             'key': State.encode_key(list(comp) + list(proc_bool) + list(proc_scalar) + list(phase)),
-            'score': float(score),
+            'score': score,
             'training_step': int(self.training_step),
             'x': {
                 'comp': list(comp),
@@ -899,7 +895,7 @@ class Environment:
                 else:
                     objective_specs.append(
                         ObjectiveSpec(
-                            mode=spec_dict['mode'],
+                            trend=spec_dict['trend'],
                             lower=float(spec_dict['lower']),
                             upper=float(spec_dict['upper']),
                             scale=float(spec_dict['scale']),
